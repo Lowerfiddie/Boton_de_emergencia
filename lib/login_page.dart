@@ -158,7 +158,7 @@ class _LoginPageState extends State<LoginPage> {
   ///net.dart
   /// Hace POST a /exec. Si hay redirect:
   /// - 302/303 → GET a Location (Apps Script sirve el JSON cacheado)
-  /// - 307/308 → re-POST a Location (preservar método)
+  /// - 307/308 → re-POST a Location (preservar mtodo)
   Future<http.Response> postAppsScript(Uri url, Map<String, String> headers, String body) async {
     final req = http.Request('POST', url)
       ..headers.addAll(headers)
