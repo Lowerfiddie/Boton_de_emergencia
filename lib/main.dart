@@ -51,9 +51,10 @@ class MyApp extends StatelessWidget {
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
           useMaterial3: true,
         ),
-        initialRoute: '/',                 // arranca en el gate
+        initialRoute: '/splash',
         routes: {
           '/': (_) => const SplashGate(), // decide /home o /login
+          '/splash': (_) => const SplashScreen(),
           '/home': (_) => const HomeScreen(),
           '/login': (_) => const SignInScreen(),
         },
@@ -66,6 +67,67 @@ class MyApp extends StatelessWidget {
           }
           return null; // usa el handler por defecto si no coincide
         }
+    );
+  }
+}
+
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  static const _splashDuration = Duration(seconds: 2);
+
+  @override
+  void initState() {
+    super.initState();
+    _navigateToGate();
+  }
+
+  Future<void> _navigateToGate() async {
+    await Future<void>.delayed(_splashDuration);
+    if (!mounted) return;
+    Navigator.of(context).pushReplacementNamed('/');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      backgroundColor: theme.colorScheme.primary,
+      body: SafeArea(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.shield, size: 96, color: Colors.white),
+              const SizedBox(height: 24),
+              Text(
+                'Botón de Emergencia',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Cargando…',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: Colors.white70,
+                ),
+              ),
+              const SizedBox(height: 32),
+              const CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
