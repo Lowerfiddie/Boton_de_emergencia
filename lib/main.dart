@@ -46,11 +46,11 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Botón de Emergencia - Login',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
-        useMaterial3: true,
-      ),
+        title: 'Botón de Emergencia - Login',
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
+          useMaterial3: true,
+        ),
         initialRoute: '/',                 // arranca en el gate
         routes: {
           '/': (_) => const SplashGate(), // decide /home o /login
