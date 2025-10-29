@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'session_manager.dart';
 import 'auth.dart'; // para googleSignIn
+import 'alarm_button.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
@@ -165,14 +166,7 @@ class _HomeScreenState extends State<HomeScreen> {
             phone: phone,
             provider: provider,
           ),
-          EmergenciaPage(
-            onTrigger: () {
-              // Aquí conectarás permisos de ubicación + envío a Sheets/Apps Script
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('SOS enviado (demo)')),
-              );
-            },
-          ),
+          EmergenciaPage(session: _session),
           const ContactosPage(), // con persistencia local
         ],
       ),
@@ -273,26 +267,136 @@ class PerfilPage extends StatelessWidget {
   }
 }
 
-class EmergenciaPage extends StatelessWidget {
-  const EmergenciaPage({super.key, required this.onTrigger});
-  final VoidCallback onTrigger;
+class EmergenciaPage extends StatefulWidget {
+  const EmergenciaPage({super.key, required this.session});
+
+  final Map<String, String?> session;
+
+  @override
+  State<EmergenciaPage> createState() => _EmergenciaPageState();
+}
+
+class _EmergenciaPageState extends State<EmergenciaPage> {
+  late final AlarmButtonController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AlarmButtonController()..addListener(_onControllerChanged);
+  }
+
+  void _onControllerChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_onControllerChanged);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleTrigger() async {
+    final result = await _controller.trigger(widget.session);
+    if (!mounted) return;
+    final theme = Theme.of(context);
+    final backgroundColor = result.success
+        ? theme.colorScheme.primary
+        : theme.colorScheme.error;
+    final textColor = result.success
+        ? theme.colorScheme.onPrimary
+        : theme.colorScheme.onError;
+    final message = result.success
+        ? result.message ?? 'Emergencia enviada correctamente.'
+        : result.error ?? 'No se pudo enviar la emergencia.';
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: backgroundColor,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 4),
+        showCloseIcon: true,
+        closeIconColor: textColor,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final cooldown = _controller.cooldownRemaining;
+    final scheduleAvailable = _controller.isWithinScheduleNow;
+    final lastError = _controller.lastError;
+
     return SafeArea(
       minimum: const EdgeInsets.all(24),
       child: Center(
-        child: FilledButton.icon(
-          icon: const Icon(Icons.sos, size: 32),
-          label: const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16.0),
-            child: Text('ENVIAR EMERGENCIA', style: TextStyle(fontSize: 18)),
-          ),
-          onPressed: onTrigger,
-          style: FilledButton.styleFrom(minimumSize: const Size(280, 64)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FilledButton.icon(
+              icon: const Icon(Icons.sos, size: 32),
+              label: const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16.0),
+                child: Text('ENVIAR EMERGENCIA', style: TextStyle(fontSize: 18)),
+              ),
+              onPressed: _controller.canTrigger ? _handleTrigger : null,
+              style: FilledButton.styleFrom(minimumSize: const Size(280, 64)),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Disponible de lunes a viernes de 06:00 a 16:00 hrs.',
+              style: Theme.of(context).textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            if (_controller.isSending)
+              const Text(
+                'Compartiendo tu ubicación en tiempo real con docentes y padres/tutores.',
+                textAlign: TextAlign.center,
+              ),
+            if (cooldown != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Tiempo restante: ${_formatDuration(cooldown)}',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+            if (!scheduleAvailable && !_controller.isSending && !_controller.isOnCooldown)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'El botón se activará automáticamente en el siguiente horario disponible.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Theme.of(context).colorScheme.outline),
+                ),
+              ),
+            if (lastError != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Text(
+                  lastError,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+          ],
         ),
       ),
     );
+  }
+
+  static String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+    final hours = duration.inHours;
+    if (hours > 0) {
+      return '${hours.toString().padLeft(2, '0')}:$minutes:$seconds';
+    }
+    return '$minutes:$seconds';
   }
 }
 
