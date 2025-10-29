@@ -36,10 +36,6 @@ void main() {
   runApp(const MyApp());
 }
 
-/// Ajusta el ID de tu spreadsheet y el nombre de la pestaña (sheet)
-const String kSpreadsheetId = '1exKfnYgdcrPABTT4TnXxOzm3JJBMXH5JJhi0aToYS4M';
-const String kSheetName = 'Registros';
-
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -466,45 +462,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class RegistrationDoneScreen extends StatelessWidget {
-  const RegistrationDoneScreen({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        minimum: const EdgeInsets.all(24),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.check_circle, size: 72),
-              const SizedBox(height: 12),
-              const Text(
-                '¡Registro completado!',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Tu información quedó guardada en la hoja.\nAhora podrás usar el botón de emergencia en la siguiente etapa.',
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 24),
-              FilledButton(
-                onPressed: () {
-                  Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(builder: (_) => const HomeScreen()),
-                  );
-                },
-                child: const Text('Continuar'),
-              ),
-            ],
-          ),
         ),
       ),
     );
