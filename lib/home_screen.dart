@@ -1,9 +1,12 @@
-import 'package:flutter/material.dart';
-import 'session_manager.dart';
-import 'auth.dart'; // para googleSignIn
 import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'Emergency_button.dart';
+import 'auth.dart'; // para googleSignIn
+import 'session_manager.dart';
 
 enum HomeSection { perfil, emergencia, contactos }
 
@@ -165,14 +168,7 @@ class _HomeScreenState extends State<HomeScreen> {
             phone: phone,
             provider: provider,
           ),
-          EmergenciaPage(
-            onTrigger: () {
-              // Aquí conectarás permisos de ubicación + envío a Sheets/Apps Script
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('SOS enviado (demo)')),
-              );
-            },
-          ),
+          const EmergenciaPage(),
           const ContactosPage(), // con persistencia local
         ],
       ),
@@ -274,24 +270,13 @@ class PerfilPage extends StatelessWidget {
 }
 
 class EmergenciaPage extends StatelessWidget {
-  const EmergenciaPage({super.key, required this.onTrigger});
-  final VoidCallback onTrigger;
+  const EmergenciaPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      minimum: const EdgeInsets.all(24),
-      child: Center(
-        child: FilledButton.icon(
-          icon: const Icon(Icons.sos, size: 32),
-          label: const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16.0),
-            child: Text('ENVIAR EMERGENCIA', style: TextStyle(fontSize: 18)),
-          ),
-          onPressed: onTrigger,
-          style: FilledButton.styleFrom(minimumSize: const Size(280, 64)),
-        ),
-      ),
+    return const SafeArea(
+      minimum: EdgeInsets.all(24),
+      child: Center(child: EmergencyButton()),
     );
   }
 }
