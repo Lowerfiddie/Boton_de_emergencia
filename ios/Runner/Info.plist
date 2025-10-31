@@ -43,7 +43,11 @@
 	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
-	<key>UIApplicationSupportsIndirectInputEvents</key>
-	<true/>
+        <key>UIApplicationSupportsIndirectInputEvents</key>
+        <true/>
+        <key>NSLocationWhenInUseUsageDescription</key>
+        <string>Esta aplicación necesita acceder a tu ubicación en tiempo real para notificar emergencias.</string>
+        <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+        <string>Esta aplicación utiliza tu ubicación mientras la emergencia está activa para compartirla con el personal autorizado.</string>
 </dict>
 </plist>
