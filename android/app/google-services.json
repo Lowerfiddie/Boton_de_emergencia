@@ -7,17 +7,45 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:1094187348595:android:16ba7cab5ed2460920f006",
+        "mobilesdk_app_id": "1:1094187348595:android:c1b5a3e3b2bb21a020f006",
         "android_client_info": {
-          "package_name": "teckali.com.boton_de_emergencia"
+          "package_name": "com.teckali.alarma_escolar"
         }
       },
       "oauth_client": [
         {
-          "client_id": "1094187348595-i4pldeecg5fmhroa5900j0g8h9en6bvf.apps.googleusercontent.com",
+          "client_id": "1094187348595-g8vas8shitac0dsrn9d2hlvl1h6h1fe7.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "teckali.com.boton_de_emergencia",
+            "package_name": "com.teckali.alarma_escolar",
+            "certificate_hash": "ba3634c3974f553a019270e54b7072294a9da962"
+          }
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyACxgEw9vc6wbkH18CSZZu-YCD3ZRNHsi8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1094187348595:android:a34a5219107678b220f006",
+        "android_client_info": {
+          "package_name": "com.teckali.boton_de_emergencia"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1094187348595-ok9h9eadfhoice4brgitahs8m8cchdn1.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.teckali.boton_de_emergencia",
             "certificate_hash": "ba3634c3974f553a019270e54b7072294a9da962"
           }
         }

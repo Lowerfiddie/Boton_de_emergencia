@@ -1,0 +1,38 @@
+{
+  "project_info": {
+    "project_number": "1094187348595",
+    "project_id": "boton-de-emergencia-emsad",
+    "storage_bucket": "boton-de-emergencia-emsad.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1094187348595:android:16ba7cab5ed2460920f006",
+        "android_client_info": {
+          "package_name": "teckali.com.boton_de_emergencia"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1094187348595-i4pldeecg5fmhroa5900j0g8h9en6bvf.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "teckali.com.boton_de_emergencia",
+            "certificate_hash": "ba3634c3974f553a019270e54b7072294a9da962"
+          }
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyACxgEw9vc6wbkH18CSZZu-YCD3ZRNHsi8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
