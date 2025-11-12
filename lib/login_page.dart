@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:device_apps/device_apps.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:http/http.dart' as http;
 import 'session_manager.dart';
 import 'auth.dart';
@@ -17,6 +19,15 @@ class _LoginPageState extends State<LoginPage> {
   final _pass  = TextEditingController();
   bool _showPass = false;
   bool _loading = false;
+  bool _hasGms = false;
+  bool _hasHms = false;
+  bool _servicesLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _detectServices();
+  }
 
   @override
   void dispose() {
@@ -94,8 +105,50 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  Future<void> _detectServices() async {
+    try {
+      final gms = await DeviceApps.isAppInstalled('com.google.android.gms');
+      final hms = await DeviceApps.isAppInstalled('com.huawei.hwid');
+
+      if (!mounted) return;
+
+      setState(() {
+        _hasGms = gms;
+        _hasHms = hms;
+        _servicesLoading = false;
+      });
+
+      if (!gms && !hms) {
+        Fluttertoast.showToast(
+          msg: 'Este dispositivo no tiene GMS ni HMS. Algunas opciones se deshabilitarán.',
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _hasGms = false;
+        _hasHms = false;
+        _servicesLoading = false;
+      });
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    // tu flujo de Google Sign-In aquí
+  }
+
+  Future<void> _signInWithHuawei() async {
+    // tu flujo de Huawei ID aquí
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_servicesLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    final noGmsNoHms = !_hasGms && !_hasHms;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Iniciar sesión')),
       body: SafeArea(
@@ -104,6 +157,38 @@ class _LoginPageState extends State<LoginPage> {
           key: _form,
           child: ListView(
             children: [
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _hasGms ? _signInWithGoogle : null,
+                  icon: const Icon(Icons.login),
+                  label: const Text('Iniciar con Google'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _hasHms ? _signInWithHuawei : null,
+                  icon: const Icon(Icons.login),
+                  label: const Text('Iniciar con Huawei ID'),
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (noGmsNoHms)
+                const Text(
+                  'Este dispositivo no cuenta con Google Mobile Services ni Huawei Mobile Services. '
+                  'Usa usuario/contraseña o teléfono.',
+                  textAlign: TextAlign.center,
+                ),
+              if (noGmsNoHms) const SizedBox(height: 24) else const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 16),
+              const Text(
+                'O inicia sesión con correo y contraseña',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _email,
                 keyboardType: TextInputType.emailAddress,
@@ -135,12 +220,12 @@ class _LoginPageState extends State<LoginPage> {
               ),
               const SizedBox(height: 16),
               SizedBox(
-                height: 48,
-                child: FilledButton.icon(
+                width: double.infinity,
+                child: OutlinedButton.icon(
                   icon: _loading
                       ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.lock_open),
-                  label: Text(_loading ? 'Entrando…' : 'Iniciar sesión'),
+                  label: Text(_loading ? 'Entrando…' : 'Iniciar con correo/contraseña'),
                   onPressed: _loading ? null : _login,
                 ),
               ),
