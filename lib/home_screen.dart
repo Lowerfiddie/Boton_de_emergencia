@@ -6,6 +6,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'Servicios/notificaciones.dart';
 
+const String kRolPermitidoEmergencia = 'Alumno/a';
+const List<String> kRolesDestinoEmergencia = [
+  'docente',
+  'Madre/Padre/Tutor',
+  'Vecino/a',
+  'Personal Administrativo',
+];
+const Duration kBloqueoEmergencia = Duration(minutes: 15);
+const int kHoraInicioEmergencia = 7;
+const int kHoraFinEmergencia = 16;
+
 enum HomeSection { perfil, emergencia, contactos }
 
 class HomeScreen extends StatefulWidget {
@@ -167,12 +178,11 @@ class _HomeScreenState extends State<HomeScreen> {
             provider: provider,
           ),
           EmergenciaPage(
-            onTrigger: () {
-              // Aquí conectarás permisos de ubicación + envío a Sheets/Apps Script
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('SOS enviado (demo)')),
-              );
-            },
+            userId: _session['userId'] ?? acc?.id ?? '',
+            displayName: displayName,
+            email: email,
+            phone: phone,
+            role: role,
           ),
           const ContactosPage(), // con persistencia local
         ],
@@ -274,29 +284,213 @@ class PerfilPage extends StatelessWidget {
   }
 }
 
-class EmergenciaPage extends StatelessWidget {
-  const EmergenciaPage({super.key, required this.onTrigger});
-  final VoidCallback onTrigger;
+class EmergenciaPage extends StatefulWidget {
+  const EmergenciaPage({
+    super.key,
+    required this.userId,
+    required this.displayName,
+    required this.email,
+    required this.phone,
+    required this.role,
+  });
+
+  final String userId;
+  final String displayName;
+  final String email;
+  final String phone;
+  final String role;
+
+  @override
+  State<EmergenciaPage> createState() => _EmergenciaPageState();
+}
+
+class _EmergenciaPageState extends State<EmergenciaPage> {
+  bool _enviando = false;
+
+  bool get _esAlumno => widget.role.trim().toLowerCase() == kRolPermitidoEmergencia.toLowerCase();
 
   @override
   Widget build(BuildContext context) {
+    Widget boton = FilledButton.icon(
+      icon: const Icon(Icons.sos, size: 32),
+      label: const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16.0),
+        child: Text('ENVIAR EMERGENCIA', style: TextStyle(fontSize: 18)),
+      ),
+      onPressed: (!_esAlumno || _enviando) ? null : _manejarBoton,
+      style: FilledButton.styleFrom(minimumSize: const Size(280, 64)),
+    );
+
+    if (!_esAlumno) {
+      boton = Stack(
+        children: [
+          boton,
+          Positioned.fill(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: _mostrarMensajeRol,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     return SafeArea(
       minimum: const EdgeInsets.all(24),
-      child: Center(
-        child: FilledButton.icon(
-          icon: const Icon(Icons.sos, size: 32),
-          label: const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16.0),
-            child: Text('ENVIAR EMERGENCIA', style: TextStyle(fontSize: 18)),
-          ),
-          onPressed: () {
-            NotificationService.showTestAlarm();
-          },
-          style: FilledButton.styleFrom(minimumSize: const Size(280, 64)),
-        ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          boton,
+          const SizedBox(height: 12),
+          if (!_esAlumno)
+            const Text(
+              'Solo los alumnos pueden enviar una emergencia.',
+              textAlign: TextAlign.center,
+            ),
+        ],
       ),
     );
   }
+
+  Future<void> _manejarBoton() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final ahora = DateTime.now();
+
+    // Restricción de horario
+    if (!_estaDentroHorario(ahora)) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('El botón solo funciona de 7:00 a 16:00.')),
+      );
+      return;
+    }
+
+    final userKey = widget.userId.isNotEmpty ? widget.userId : widget.email;
+    final ultima = await EmergencyUsageStore.obtenerUltimaActivacion(userKey);
+    if (ultima != null) {
+      final diff = ahora.difference(ultima);
+      if (diff < kBloqueoEmergencia) {
+        final restante = kBloqueoEmergencia - diff;
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Botón bloqueado. Intenta de nuevo en ${_formatDuration(restante)}.'),
+          ),
+        );
+        return;
+      }
+    }
+
+    setState(() => _enviando = true);
+    try {
+      final resultado = await _enviarEmergencia(ahora);
+      if (!mounted) return;
+
+      if (resultado.ok) {
+        await EmergencyUsageStore.guardarActivacion(userKey, ahora);
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(resultado.mensaje ?? 'Emergencia enviada.'), // Bloqueo de 15 minutos
+          ),
+        );
+      } else {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              resultado.mensaje ?? 'No se pudo enviar la emergencia. Intenta nuevamente.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
+  }
+
+  Future<_ResultadoEnvio> _enviarEmergencia(DateTime fecha) async {
+    final payload = jsonEncode({
+      'op': 'trigger_emergency',
+      'userId': widget.userId,
+      'displayName': widget.displayName,
+      'email': widget.email,
+      'phone': widget.phone,
+      'role': widget.role,
+      'timestamp': fecha.toIso8601String(),
+      'recipientRoles': kRolesDestinoEmergencia, // Destinatarios autorizados
+    });
+
+    http.Response? res;
+    try {
+      res = await postAppsScript(
+        Uri.parse(kAppsScriptUrl),
+        {'Content-Type': 'application/json'},
+        payload,
+      );
+    } catch (e) {
+      return _ResultadoEnvio(ok: false, mensaje: 'Error de red: $e');
+    }
+
+    bool ok = false;
+    String? mensaje;
+
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      final ct = (res.headers['content-type'] ?? '').toLowerCase();
+      if (ct.contains('application/json')) {
+        try {
+          final body = jsonDecode(res.body);
+          if (body is Map) {
+            final status = (body['status'] ?? body['resultado'] ?? '').toString().toLowerCase();
+            ok = body['ok'] == true || body['success'] == true || status == 'ok' || status == 'success';
+            final mensajeCrudo = body['message'] ?? body['mensaje'] ?? body['detail'] ?? body['error'];
+            if (mensajeCrudo != null && mensajeCrudo.toString().isNotEmpty) {
+              mensaje = mensajeCrudo.toString();
+            }
+          }
+        } catch (_) {
+          ok = true;
+        }
+      } else {
+        ok = true;
+      }
+    } else {
+      mensaje = 'Respuesta ${res.statusCode}: ${res.reasonPhrase ?? ''}'.trim();
+    }
+
+    if (ok) {
+      await NotificationService.showTestAlarm();
+    } else {
+      mensaje ??= 'No se pudo enviar la emergencia. Intenta nuevamente.';
+    }
+    return _ResultadoEnvio(ok: ok, mensaje: mensaje);
+  }
+
+  bool _estaDentroHorario(DateTime ahora) {
+    final inicio = DateTime(ahora.year, ahora.month, ahora.day, kHoraInicioEmergencia);
+    final fin = DateTime(ahora.year, ahora.month, ahora.day, kHoraFinEmergencia);
+    return !ahora.isBefore(inicio) && !ahora.isAfter(fin);
+  }
+
+  String _formatDuration(Duration d) {
+    final minutos = d.inMinutes;
+    final segundos = d.inSeconds % 60;
+    if (minutos > 0) {
+      return '${minutos}m ${segundos.toString().padLeft(2, '0')}s';
+    }
+    return '${segundos}s';
+  }
+
+  void _mostrarMensajeRol() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Solo los alumnos pueden usar el botón de emergencia.')),
+    );
+  }
+}
+
+class _ResultadoEnvio {
+  const _ResultadoEnvio({required this.ok, this.mensaje});
+  final bool ok;
+  final String? mensaje;
 }
 
 class ContactosPage extends StatefulWidget {
@@ -691,6 +885,25 @@ class ContactsStore {
     final sp = await SharedPreferences.getInstance();
     final raw = jsonEncode(items.map((e) => e.toMap()).toList());
     await sp.setString(_kKey, raw);
+  }
+}
+
+/// Bloqueo de 15 minutos: persistimos la última activación por usuario.
+class EmergencyUsageStore {
+  static const _kPrefix = 'last_emergency_activation_';
+
+  static Future<DateTime?> obtenerUltimaActivacion(String userKey) async {
+    if (userKey.isEmpty) return null;
+    final sp = await SharedPreferences.getInstance();
+    final raw = sp.getString('$_kPrefix$userKey');
+    if (raw == null) return null;
+    return DateTime.tryParse(raw);
+  }
+
+  static Future<void> guardarActivacion(String userKey, DateTime fecha) async {
+    if (userKey.isEmpty) return;
+    final sp = await SharedPreferences.getInstance();
+    await sp.setString('$_kPrefix$userKey', fecha.toIso8601String());
   }
 }
 
