@@ -1,0 +1,147 @@
+final FlutterLocalNotificationsPlugin _flnp =
+FlutterLocalNotificationsPlugin();
+
+final AndroidNotificationChannel _alarmChannel = AndroidNotificationChannel(
+  'alarm_channel',
+  'Alarmas',
+  description: 'Alertas de emergencia',
+  importance: Importance.max,
+  playSound: true,
+  enableVibration: true,
+  vibrationPattern: Int64List.fromList([0, 600, 300, 800]),
+  sound: const RawResourceAndroidNotificationSound('all-might-screaming-no-made-with-Voicemod'), // sirena.mp3 en res/raw
+);
+
+/// 🔔 Handler de mensajes FCM cuando la app está en background/terminada.
+/// Debe ser una función de nivel superior (no dentro de una clase).
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await NotificationService.handleRemoteMessage(message);
+}
+
+class NotificationService {
+  /// Llamas a esto una sola vez al iniciar la app (desde main).
+  static Future<void> initialize() async {
+    // Inicializa Firebase (usa firebase_options.dart)
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+
+    // Registrar handler para mensajes en background
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+    // Inicializar notificaciones locales
+    await _initLocalNotifications();
+
+    // Pedir permisos (iOS + Android 13+)
+    await _requestPermissions();
+
+    // Mensajes en foreground: vibrar + notificación local
+    FirebaseMessaging.onMessage.listen((message) async {
+      await handleRemoteMessage(message);
+    });
+
+    // (Opcional) imprime el token para pruebas en Firebase Console
+    await printFcmToken();
+  }
+
+  static Future<void> _initLocalNotifications() async {
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const iosInit = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
+
+    await _flnp.initialize(
+      const InitializationSettings(android: androidInit, iOS: iosInit),
+    );
+
+    // Crear canal (solo Android)
+    await _flnp
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(_alarmChannel);
+  }
+
+  static Future<void> _requestPermissions() async {
+    await FirebaseMessaging.instance.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+      announcement: false,
+      carPlay: false,
+      criticalAlert: false, // para Critical Alerts en iOS sería true y requiere trámite
+      provisional: false,
+    );
+
+    await _flnp
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestNotificationsPermission();
+  }
+
+  /// Maneja un mensaje remoto FCM y lo muestra como notificación local.
+  static Future<void> handleRemoteMessage(RemoteMessage msg) async {
+    final notif = msg.notification;
+
+    await _flnp.show(
+      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      notif?.title ?? 'ALERTA',
+      notif?.body ?? 'Emergencia recibida',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'alarm_channel',
+          'Alarmas',
+          channelDescription: 'Alertas de emergencia',
+          importance: Importance.max,
+          priority: Priority.max,
+          category: AndroidNotificationCategory.alarm,
+          fullScreenIntent: true,
+        ),
+        iOS: DarwinNotificationDetails(
+          sound: 'sirena.wav', // agrega sirena.wav al bundle iOS
+          presentAlert: true,
+          presentSound: true,
+          presentBadge: true,
+        ),
+      ),
+      payload: msg.data.toString(),
+    );
+  }
+
+  /// 🔘 Llamar desde el botón dentro de tu app para disparar una alerta de prueba.
+  static Future<void> showTestAlarm() async {
+
+    await _flnp.show(
+      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      'ALERTA DE PRUEBA',
+      'Disparo local desde el botón',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'alarm_channel',
+          'Alarmas',
+          channelDescription: 'Alertas de emergencia',
+          importance: Importance.max,
+          priority: Priority.max,
+          category: AndroidNotificationCategory.alarm,
+          fullScreenIntent: true,
+        ),
+        iOS: DarwinNotificationDetails(
+          sound: 'sirena.wav',
+          presentAlert: true,
+          presentSound: true,
+          presentBadge: true,
+        ),
+      ),
+      payload: 'test-local',
+    );
+  }
+
+  /// Solo para depurar: te muestra el token de FCM en la consola.
+  static Future<void> printFcmToken() async {
+    final token = await FirebaseMessaging.instance.getToken();
+    if (kDebugMode) {
+      print('🔥 FCM TOKEN: $token');
+    }
+  }
+}

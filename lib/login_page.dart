@@ -2,8 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'session_manager.dart';
-import 'auth.dart';
-import 'login_options.dart';
+import 'auth.dart';import 'login_options.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});

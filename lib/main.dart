@@ -9,6 +9,7 @@ import 'email_registration_screen.dart';
 import 'auth.dart';
 import 'home_screen.dart';
 import 'login_page.dart';
+import 'Servicios/notificaciones.dart';
 
 final _passCtrl = TextEditingController();
 final _pass2Ctrl = TextEditingController();
@@ -32,7 +33,12 @@ class SplashGate extends StatelessWidget {
   }
 }
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 🔹 Inicializa Firebase + FCM + notificaciones locales
+  await NotificationService.initialize();
+
   runApp(const MyApp());
 }
 

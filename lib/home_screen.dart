@@ -4,6 +4,7 @@ import 'auth.dart'; // para googleSignIn
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'Servicios/notificaciones.dart';
 
 enum HomeSection { perfil, emergencia, contactos }
 
@@ -288,7 +289,9 @@ class EmergenciaPage extends StatelessWidget {
             padding: EdgeInsets.symmetric(vertical: 16.0),
             child: Text('ENVIAR EMERGENCIA', style: TextStyle(fontSize: 18)),
           ),
-          onPressed: onTrigger,
+          onPressed: () {
+            NotificationService.showTestAlarm();
+          },
           style: FilledButton.styleFrom(minimumSize: const Size(280, 64)),
         ),
       ),
