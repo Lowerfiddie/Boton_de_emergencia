@@ -13,7 +13,7 @@ const List<String> kRolesDestinoEmergencia = [
   'Vecino/a',
   'Personal Administrativo',
 ];
-const Duration kBloqueoEmergencia = Duration(minutes: 15);
+const Duration kBloqueoEmergencia = Duration(minutes: 2);
 const int kHoraInicioEmergencia = 7;
 const int kHoraFinEmergencia = 16;
 

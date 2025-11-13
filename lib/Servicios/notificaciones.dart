@@ -90,5 +90,5 @@ class NotificationService {
     if (kDebugMode) {
       print('🔥 FCM TOKEN: $token');
     }
-  }
+  } 
 }

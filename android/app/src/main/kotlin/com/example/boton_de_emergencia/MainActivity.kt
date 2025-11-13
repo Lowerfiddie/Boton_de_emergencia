@@ -1,9 +1,11 @@
 package com.teckali.boton_de_emergencia
 
 import android.content.pm.PackageManager
+import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+
 class MainActivity : FlutterActivity() {
 
     private val CHANNEL = "com.teckali.system/packages"
@@ -26,9 +28,7 @@ class MainActivity : FlutterActivity() {
                 }
                 "checkServices" -> {
                     val hasGms = hasPackage("com.google.android.gms")
-                    // Huawei ID / HMS Core (Account Kit) típicamente:
-                    // com.huawei.hwid = Huawei Mobile Services (Account)
-                    // com.huawei.hms = HMS Core
+                    // Huawei ID / HMS Core
                     val hasHmsId = hasPackage("com.huawei.hwid")
                     val hasHmsCore = hasPackage("com.huawei.hms")
                     result.success(
@@ -46,9 +46,22 @@ class MainActivity : FlutterActivity() {
 
     private fun hasPackage(pkg: String): Boolean {
         return try {
-            packageManager.getPackageInfo(pkg, PackageManager.PackageInfoFlags.of(0))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // Android 13+ → API nueva con PackageInfoFlags
+                packageManager.getPackageInfo(
+                    pkg,
+                    PackageManager.PackageInfoFlags.of(0)
+                )
+            } else {
+                // Android <= 12 → API vieja (deprecated pero compatible)
+                @Suppress("DEPRECATION")
+                packageManager.getPackageInfo(pkg, 0)
+            }
             true
+        } catch (e: PackageManager.NameNotFoundException) {
+            false
         } catch (e: Exception) {
+            // Por si acaso algo más raro pasa
             false
         }
     }
