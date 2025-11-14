@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'session_manager.dart';
 import 'auth.dart'; // para googleSignIn
@@ -5,14 +6,9 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'Servicios/notificaciones.dart';
+import 'Servicios/emergencia_service.dart';
 
 const String kRolPermitidoEmergencia = 'Alumno/a';
-const List<String> kRolesDestinoEmergencia = [
-  'docente',
-  'Madre/Padre/Tutor',
-  'Vecino/a',
-  'Personal Administrativo',
-];
 const Duration kBloqueoEmergencia = Duration(minutes: 2);
 const int kHoraInicioEmergencia = 7;
 const int kHoraFinEmergencia = 16;
@@ -47,6 +43,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _loading = false;
     });
 
+    await _configurarNotificacionesSesion(s);
+
     // Reintentar sesión Google de forma silenciosa (opcional)
     if (s['provider'] == 'google' && !_silentTried) {
       _silentTried = true;
@@ -71,11 +69,39 @@ class _HomeScreenState extends State<HomeScreen> {
           final updated = await SessionManager.loadSession();
           if (!mounted) return;
           setState(() => _session = updated);
+          await _configurarNotificacionesSesion(updated);
         }
       } catch (_) {
         // Silencio errores; si se requiere token se pedirá al usar Sheets
       }
     }
+  }
+
+  Future<void> _configurarNotificacionesSesion(
+      Map<String, String?> datosSesion) async {
+    final rol = datosSesion['role'];
+    final idSesion = datosSesion['userId'];
+    final idGoogle = googleSignIn.currentUser?.id;
+    final idUsuario =
+        (idSesion != null && idSesion.isNotEmpty) ? idSesion : (idGoogle ?? '');
+    if (rol == null || rol.isEmpty || idUsuario.isEmpty) {
+      return;
+    }
+
+    final nombre = datosSesion['displayName'] ??
+        googleSignIn.currentUser?.displayName ??
+        'Usuario';
+
+    final dispositivo = defaultTargetPlatform.name;
+
+    await NotificationService.actualizarDatosUsuarioNotificaciones(
+      idUsuario: idUsuario,
+      rol: rol,
+      nombre: nombre,
+      grupo: datosSesion['grupo'],
+      plantel: datosSesion['plantel'],
+      tipoDispositivo: dispositivo,
+    );
   }
 
   void _onSelect(HomeSection s) {
@@ -96,6 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
       } catch (_) {}
     }
 
+    await NotificationService.limpiarSuscripciones();
     await SessionManager.clear();
     // Vuelve a la pantalla de login (o SplashGate que te mandará al login)
     if (!mounted) return;
@@ -394,7 +421,11 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
         );
       } else {
         messenger.showSnackBar(
-          const SnackBar(content: Text('No se pudo enviar la emergencia. Intenta nuevamente.')),
+          const SnackBar(
+            content: Text(
+              'No se pudo registrar la emergencia en el backend. Intenta nuevamente.',
+            ),
+          ),
         );
       }
     } finally {
@@ -403,42 +434,17 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
   }
 
   Future<bool> _enviarEmergencia(DateTime fecha) async {
-    final payload = jsonEncode({
-      'op': 'trigger_emergency',
-      'userId': widget.userId,
-      'displayName': widget.displayName,
-      'email': widget.email,
-      'phone': widget.phone,
-      'role': widget.role,
-      'timestamp': fecha.toIso8601String(),
-      'recipientRoles': kRolesDestinoEmergencia, // Destinatarios autorizados
-    });
-
-    final res = await postAppsScript(
-      Uri.parse(kAppsScriptUrl),
-      {'Content-Type': 'application/json'},
-      payload,
+    final dispositivo = defaultTargetPlatform.name;
+    return EmergenciaService.enviarEmergenciaAlBackend(
+      idUsuario: widget.userId,
+      nombreUsuario: widget.displayName,
+      rol: widget.role,
+      grupo: null,
+      plantel: null,
+      fechaHoraLocal: fecha,
+      ubicacion: null,
+      dispositivo: dispositivo,
     );
-
-    bool ok = false;
-    if (res.statusCode >= 200 && res.statusCode < 300) {
-      final ct = (res.headers['content-type'] ?? '').toLowerCase();
-      if (ct.contains('application/json')) {
-        try {
-          final body = jsonDecode(res.body);
-          ok = body is Map && body['ok'] == true;
-        } catch (_) {
-          ok = true;
-        }
-      } else {
-        ok = true;
-      }
-    }
-
-    if (ok) {
-      await NotificationService.showTestAlarm();
-    }
-    return ok;
   }
 
   bool _estaDentroHorario(DateTime ahora) {
