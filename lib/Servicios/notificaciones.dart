@@ -221,7 +221,7 @@ class NotificationService {
         'Un alumno';
     final grupo = (data['grupo'] ?? data['group'])?.toString().trim();
     if (grupo != null && grupo.isNotEmpty) {
-      return '$alumno (${grupo}) necesita ayuda.';
+      return '$alumno ($grupo) necesita ayuda.';
     }
     return '$alumno necesita ayuda.';
   }

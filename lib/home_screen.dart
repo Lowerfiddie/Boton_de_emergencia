@@ -488,9 +488,20 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
   }
 
   Future<void> _refrescarFeed() async {
-    final future = _cargarFeed();
-    setState(() => _feedFuture = future);
-    await future;
+    try {
+      final future = _cargarFeed();
+      final items = await future;
+      if (!mounted) return;
+      setState(() {
+        _feedFuture = Future.value(items);
+      });
+    } catch (e) {
+      debugPrint('Error refrescando feed: $e');
+      if (!mounted) return;
+      setState(() {
+        _feedFuture = Future.error(e);
+      });
+    }
   }
 
   Widget _buildLoadingList() {

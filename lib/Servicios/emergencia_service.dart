@@ -62,56 +62,33 @@ class EmergenciaService {
       return ok;
   }
 
-  static Future<List<SosItem>> obtenerFeedEmergencias({
-    String? grupo,
-    String? plantel,
-  }) async {
-    final uri = Uri.parse(endpointEmergencia);
-    final payload = <String, dynamic>{'op': 'sos_feed'};
-    if (grupo != null && grupo.trim().isNotEmpty) {
-      payload['grupo'] = grupo.trim();
-    }
-    if (plantel != null && plantel.trim().isNotEmpty) {
-      payload['plantel'] = plantel.trim();
-    }
-
-    final response = await http.post(
-      uri,
-      headers: const {'Content-Type': 'application/json'},
-      body: jsonEncode(payload),
+  static Future<List<SosItem>> obtenerFeedEmergencias({String? grupo, String? plantel}) async {
+    // Construimos la URL sobre el endpoint ECHO (googleusercontent)
+    final uri = Uri.parse(
+      '$kAppsScriptUrl?op=sos_feed${grupo != null && grupo.isNotEmpty ? '&grupo=$grupo' : ''}',
     );
 
-    if (kDebugMode) {
-      debugPrint('sos_feed status: ${response.statusCode}');
+    debugPrint('sos_feed URL: $uri');
+
+    final resp = await http.get(uri);
+
+    final status = resp.statusCode;
+    debugPrint('sos_feed status: $status');
+    debugPrint('sos_feed body: ${resp.body}');
+
+    if (status < 200 || status >= 300) {
+      throw Exception('No se pudo obtener el feed ($status)');
     }
 
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('No se pudo obtener el feed (${response.statusCode})');
+    // Aquí ya NO hay 302, debe llegar 200 + JSON de buildSosFeed_
+    final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+    if (decoded['ok'] != true) {
+      throw Exception('Respuesta del backend no OK en sos_feed');
     }
 
-    final decoded = jsonDecode(response.body);
-    final items = _extraerLista(decoded);
-    return items.map(SosItem.fromJson).toList();
-  }
-
-  static List<Map<String, dynamic>> _extraerLista(dynamic decoded) {
-    List<dynamic>? raw;
-    if (decoded is List) {
-      raw = decoded;
-    } else if (decoded is Map<String, dynamic>) {
-      for (final key in ['items', 'sos', 'data', 'result']) {
-        final value = decoded[key];
-        if (value is List) {
-          raw = value;
-          break;
-        }
-      }
-    }
-    final base = raw ?? <dynamic>[];
-    return base
-        .whereType<Map>()
-        .map((entry) =>
-            entry.map((key, value) => MapEntry(key.toString(), value)))
+    final itemsJson = (decoded['items'] as List?) ?? [];
+    return itemsJson
+        .map((e) => SosItem.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 }
