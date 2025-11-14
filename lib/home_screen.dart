@@ -9,9 +9,9 @@ import 'Servicios/notificaciones.dart';
 import 'Servicios/emergencia_service.dart';
 
 const String kRolPermitidoEmergencia = 'Alumno/a';
-const Duration kBloqueoEmergencia = Duration(minutes: 2);
+const Duration kBloqueoEmergencia = Duration(minutes: 1);
 const int kHoraInicioEmergencia = 7;
-const int kHoraFinEmergencia = 16;
+const int kHoraFinEmergencia = 22;
 
 enum HomeSection { perfil, emergencia, contactos }
 
@@ -443,7 +443,7 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
       plantel: null,
       fechaHoraLocal: fecha,
       ubicacion: null,
-      dispositivo: dispositivo,
+      dispositivo: dispositivo, email: '',
     );
   }
 

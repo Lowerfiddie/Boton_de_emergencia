@@ -6,6 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
+import 'package:boton_de_emergencia/auth.dart';
 
 import '../firebase_options.dart';
 
@@ -13,7 +14,7 @@ final FlutterLocalNotificationsPlugin _flnp =
     FlutterLocalNotificationsPlugin();
 
 const String endpointRegisterToken =
-    'https://MI_ENDPOINT/registerToken'; // TODO: reemplazar
+    kAppsScriptUrl;
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -175,7 +176,7 @@ class NotificationService {
       grupo: _grupoActual,
       plantel: _plantelActual,
       fcmToken: token,
-      tipoDispositivo: tipoDispositivo,
+      tipoDispositivo: tipoDispositivo, email: '',
     );
   }
 
@@ -184,6 +185,7 @@ class NotificationService {
     required String idUsuario,
     required String rol,
     required String nombre,
+    required String email,       // 👈 NUEVO
     String? grupo,
     String? plantel,
     required String fcmToken,
@@ -191,13 +193,16 @@ class NotificationService {
   }) async {
     final uri = Uri.parse(endpointRegisterToken);
     final payload = jsonEncode({
-      'idUsuario': idUsuario,
-      'rol': rol,
+      'op': 'register_token',      // 👈 IMPORTANTE
+      'userId': idUsuario,         // 👈 Apps Script usa userId
       'nombre': nombre,
+      'email': email,              // 👈 aunque sea el mismo que usaste para login
+      'rol': rol,
       'grupo': grupo,
+      // plantel lo puedes mandar aparte si luego lo quieres usar en el script:
       'plantel': plantel,
       'fcmToken': fcmToken,
-      'tipoDispositivo': tipoDispositivo,
+      'dispositivo': tipoDispositivo,
     });
 
     try {
@@ -207,8 +212,11 @@ class NotificationService {
         body: payload,
       );
 
+      debugPrint(
+          'register_token status: ${response.statusCode}, body: ${response.body}');
+
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        debugPrint('No se pudo registrar token FCM. Status: ${response.statusCode}');
+        debugPrint('No se pudo registrar token FCM.');
       }
     } catch (e) {
       debugPrint('Error registrando token en backend: $e');
