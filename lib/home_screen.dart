@@ -1,8 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'session_manager.dart';
 import 'auth.dart'; // para googleSignIn
-import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'Servicios/notificaciones.dart';
@@ -358,6 +360,7 @@ class EmergenciaPage extends StatefulWidget {
 class _EmergenciaPageState extends State<EmergenciaPage> {
   bool _enviando = false;
   Future<List<SosItem>>? _feedFuture;
+  StreamSubscription<void>? _feedSubscription;
 
   bool get _esAlumno => isAlumnoRole(widget.role);
 
@@ -366,7 +369,20 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
     super.initState();
     if (!_esAlumno) {
       _feedFuture = _cargarFeed();
+      _feedSubscription =
+          NotificationService.feedRefreshStream.listen((_) async {
+        if (!mounted) return;
+        debugPrint(
+            '🔄 Refrescando feed tras notificación en primer plano para ${widget.role}.');
+        await refrescarFeed();
+      });
     }
+  }
+
+  @override
+  void dispose() {
+    _feedSubscription?.cancel();
+    super.dispose();
   }
 
   @override
@@ -420,7 +436,7 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
           const SizedBox(height: 16),
           Expanded(
             child: RefreshIndicator(
-              onRefresh: _refrescarFeed,
+              onRefresh: refrescarFeed,
               child: FutureBuilder<List<SosItem>>(
                 future: future,
                 builder: (context, snapshot) {
@@ -438,7 +454,7 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
                         icon: const Icon(Icons.refresh),
                         label: const Text('Reintentar'),
                         onPressed: () {
-                          _refrescarFeed();
+                          refrescarFeed();
                         },
                       ),
                     );
@@ -487,7 +503,7 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
     );
   }
 
-  Future<void> _refrescarFeed() async {
+  Future<void> refrescarFeed() async {
     try {
       final future = _cargarFeed();
       final items = await future;

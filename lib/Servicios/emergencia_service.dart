@@ -42,24 +42,23 @@ class EmergenciaService {
       'dispositivo': dispositivo,
     });
 
-      final response = await http.post(
-        uri,
-        headers: const {'Content-Type': 'application/json'},
-        body: payload,
-      );
+    debugPrint('sos_start payload: $payload');
 
-      debugPrint(
-          'sos_start status: ${response.statusCode}, body: ${response.body}');
+    final response = await http.post(
+      uri,
+      headers: const {'Content-Type': 'application/json'},
+      body: payload,
+    );
 
-      final status = response.statusCode;
-      final ok = (status >= 200 && status < 300) || status == 302;
+    final status = response.statusCode;
+    final ok = (status >= 200 && status < 300) || status == 302;
 
-      debugPrint('sos_start status: $status, body: ${response.body}');
+    debugPrint('sos_start status: $status, body: ${response.body}');
 
-      if (!ok) {
-        debugPrint('Error al registrar emergencia.');
-      }
-      return ok;
+    if (!ok) {
+      debugPrint('Error al registrar emergencia.');
+    }
+    return ok;
   }
 
   static Future<List<SosItem>> obtenerFeedEmergencias({String? grupo, String? plantel}) async {

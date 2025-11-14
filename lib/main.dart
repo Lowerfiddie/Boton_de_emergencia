@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
@@ -10,6 +11,7 @@ import 'auth.dart';
 import 'home_screen.dart';
 import 'login_page.dart';
 import 'Servicios/notificaciones.dart';
+import 'firebase_options.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -37,6 +39,10 @@ class SplashGate extends StatelessWidget {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
   // 🔹 Inicializa Firebase + FCM + notificaciones locales
   try {
