@@ -22,6 +22,8 @@ const String endpointRegisterToken =
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  debugPrint(
+      '📥 [background] RemoteMessage recibido: ${message.messageId}, data: ${message.data}');
   await NotificationService.handleRemoteMessage(message);
 }
 
@@ -37,8 +39,8 @@ class NotificationService {
   static bool _initialMessageHandled = false;
   static const AndroidNotificationChannel _emergencyChannel =
       AndroidNotificationChannel(
-    'sos_emergencias',
-    'Alertas de emergencia',
+    'emergencias_channel',
+    'Emergencias',
     description: 'Notificaciones críticas del botón de emergencia',
     importance: Importance.max,
     playSound: true,
@@ -56,13 +58,21 @@ class NotificationService {
   static String? _emailActual;
 
   static final Set<String> _topicsSuscritos = <String>{};
+  static final StreamController<void> _feedRefreshController =
+      StreamController<void>.broadcast();
+
+  static Stream<void> get feedRefreshStream => _feedRefreshController.stream;
 
   static Future<void> initialize({GlobalKey<NavigatorState>? navigatorKey}) async {
     _navigatorKey = navigatorKey;
     try {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
+      } else {
+        debugPrint('Firebase ya inicializado con ${Firebase.apps.length} apps.');
+      }
     } catch (e) {
       debugPrint('Error inicializando Firebase: $e');
       return;
@@ -101,10 +111,16 @@ class NotificationService {
     }
 
     FirebaseMessaging.onMessage.listen((message) async {
+      debugPrint(
+          '📩 [foreground] RemoteMessage: ${message.messageId}, data: ${message.data}');
       await handleRemoteMessage(message, fromForeground: true);
     });
 
-    FirebaseMessaging.onMessageOpenedApp.listen(_handleOpenedMessage);
+    FirebaseMessaging.onMessageOpenedApp.listen((message) {
+      debugPrint(
+          '🔔 onMessageOpenedApp -> ${message.messageId}, data: ${message.data}');
+      unawaited(_handleOpenedMessage(message));
+    });
 
     final initial = await FirebaseMessaging.instance.getInitialMessage();
     if (initial != null && _esMensajeSos(initial)) {
@@ -116,9 +132,8 @@ class NotificationService {
 
     _messaging.onTokenRefresh.listen((token) async {
       _tokenFcm = token;
-      if (kDebugMode) {
-        print('🔥 Nuevo FCM TOKEN: $token');
-      }
+      debugPrint(
+          '🔥 onTokenRefresh → token: $token, rol: $_rolActual, user: $_idUsuarioActual');
       await _enviarRegistroTokenSiDisponible();
     });
   }
@@ -143,9 +158,19 @@ class NotificationService {
 
   static Future<void> handleRemoteMessage(RemoteMessage msg,
       {bool fromForeground = false}) async {
-    if (!_esMensajeSos(msg)) return;
+    _logRemoteMessage(msg, source: fromForeground ? 'foreground' : 'background');
+    if (!_esMensajeSos(msg)) {
+      debugPrint('Mensaje recibido no corresponde a SOS, se ignora.');
+      return;
+    }
+    if (!isMonitoringRole(_rolActual)) {
+      debugPrint(
+          'Rol actual ($_rolActual) no es de monitoreo. Ignorando notificación SOS.');
+      return;
+    }
     await _mostrarNotificacionEmergencia(msg);
     if (fromForeground) {
+      _notificarActualizacionFeed();
       _mostrarAvisoForeground(msg);
     }
   }
@@ -160,6 +185,7 @@ class NotificationService {
         msg.sentTime?.millisecondsSinceEpoch ??
         DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
+    debugPrint('📣 Mostrando notificación local: $title - $body');
     await _flnp.show(
       id,
       title,
@@ -246,6 +272,7 @@ class NotificationService {
     if (!_esMensajeSos(message)) return;
     if (!isMonitoringRole(_rolActual)) return;
     _initialMessageHandled = true;
+    debugPrint('🧭 Abriendo feed de emergencias desde notificación.');
     await _navegarAMonitoreo();
   }
 
@@ -285,9 +312,8 @@ class NotificationService {
   static Future<void> _obtenerTokenInicial() async {
     try {
       _tokenFcm = await _messaging.getToken();
-      if (kDebugMode) {
-        print('🔥 FCM TOKEN: $_tokenFcm');
-      }
+      debugPrint(
+          '🔥 Token inicial FCM: $_tokenFcm, rol: $_rolActual, user: $_idUsuarioActual');
       await _enviarRegistroTokenSiDisponible();
     } catch (e) {
       debugPrint('Error obteniendo token FCM: $e');
@@ -310,6 +336,8 @@ class NotificationService {
     _plantelActual = plantel;
     _tipoDispositivo = tipoDispositivo;
     _emailActual = email;
+    debugPrint(
+        'Configurando notificaciones -> user: $idUsuario, rol: $rol, grupo: $grupo, plantel: $plantel, dispositivo: $tipoDispositivo');
     await _enviarRegistroTokenSiDisponible();
     await configurarSuscripcionesPorRol(rol: rol, plantel: plantel);
     await maybeHandleInitialMessageAfterLogin();
@@ -327,9 +355,13 @@ class NotificationService {
         rol == null ||
         nombre == null ||
         tipoDispositivo == null) {
+      debugPrint(
+          'Registro de token pendiente. Datos incompletos (token: $token, user: $idUsuario, rol: $rol, nombre: $nombre, dispositivo: $tipoDispositivo)');
       return;
     }
 
+    debugPrint(
+        'Listo para registrar token. user: $idUsuario, rol: $rol, token: $token');
     await registerTokenEnBackend(
       idUsuario: idUsuario,
       rol: rol,
@@ -368,6 +400,8 @@ class NotificationService {
     });
 
     try {
+      debugPrint(
+          'register_token payload -> rol: $rol, userId: $idUsuario, token: $fcmToken, payload: $payload');
       final response = await http.post(
         uri,
         headers: const {'Content-Type': 'application/json'},
@@ -375,7 +409,7 @@ class NotificationService {
       );
 
       debugPrint(
-          'register_token status: ${response.statusCode}, body: ${response.body}');
+          'register_token status: ${response.statusCode}, body: ${response.body}, rol: $rol, userId: $idUsuario, token: $fcmToken');
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         debugPrint('No se pudo registrar token FCM.');
@@ -450,5 +484,20 @@ class NotificationService {
     if (plantel == null || plantel.trim().isEmpty) return null;
     final normalizado = plantel.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '_');
     return '${prefijo}_$normalizado';
+  }
+
+  static void _notificarActualizacionFeed() {
+    if (!_feedRefreshController.isClosed) {
+      _feedRefreshController.add(null);
+    }
+  }
+
+  static void _logRemoteMessage(RemoteMessage msg, {required String source}) {
+    debugPrint(
+        '📨 [$source] mensaje SOS potencial id=${msg.messageId}, data=${msg.data}');
+    final notif = msg.notification;
+    if (notif != null) {
+      debugPrint('   título: ${notif.title} | cuerpo: ${notif.body}');
+    }
   }
 }
