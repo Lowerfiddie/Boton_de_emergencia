@@ -7,8 +7,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'Servicios/notificaciones.dart';
 import 'Servicios/emergencia_service.dart';
+import 'roles.dart';
 
-const String kRolPermitidoEmergencia = 'Alumno/a';
+const String kRolPermitidoEmergencia = kRolAlumnoEstandar;
 const Duration kBloqueoEmergencia = Duration(minutes: 1);
 const int kHoraInicioEmergencia = 7;
 const int kHoraFinEmergencia = 22;
@@ -26,12 +27,24 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loading = true;
   bool _silentTried = false;
   HomeSection _section = HomeSection.emergencia;
+  bool _processedInitialArgs = false;
 
   @override
   void initState() {
     super.initState();
     _initHome();
 
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_processedInitialArgs) return;
+    _processedInitialArgs = true;
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Map && args['openEmergencyFeed'] == true) {
+      setState(() => _section = HomeSection.emergencia);
+    }
   }
 
   Future<void> _initHome() async {
@@ -57,14 +70,12 @@ class _HomeScreenState extends State<HomeScreen> {
           await SessionManager.saveSession(
             userId: acc.id,
             provider: 'google',
-            //displayName: acc.displayName,
-            //email: acc.email,
-            //phone: _session['phone'], // preserva teléfono
-            //role: _session['role'],   // preserva rol
             displayName: s['displayName'] ?? acc.displayName,
             email: s['email'] ?? acc.email,
             phone: s['phone'],
             role: s['role'],
+            grupo: s['grupo'],
+            plantel: s['plantel'],
           );
           final updated = await SessionManager.loadSession();
           if (!mounted) return;
@@ -91,6 +102,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final nombre = datosSesion['displayName'] ??
         googleSignIn.currentUser?.displayName ??
         'Usuario';
+    final email = datosSesion['email'] ??
+        googleSignIn.currentUser?.email ??
+        '';
 
     final dispositivo = defaultTargetPlatform.name;
 
@@ -98,6 +112,7 @@ class _HomeScreenState extends State<HomeScreen> {
       idUsuario: idUsuario,
       rol: rol,
       nombre: nombre,
+      email: email,
       grupo: datosSesion['grupo'],
       plantel: datosSesion['plantel'],
       tipoDispositivo: dispositivo,
@@ -210,6 +225,8 @@ class _HomeScreenState extends State<HomeScreen> {
             email: email,
             phone: phone,
             role: role,
+            grupo: _session['grupo'],
+            plantel: _session['plantel'],
           ),
           const ContactosPage(), // con persistencia local
         ],
@@ -220,7 +237,10 @@ class _HomeScreenState extends State<HomeScreen> {
   String _titleForSection(HomeSection s) {
     switch (s) {
       case HomeSection.perfil: return 'Mis datos';
-      case HomeSection.emergencia: return 'Botón de emergencia';
+      case HomeSection.emergencia:
+        return isMonitoringRole(_session['role'])
+            ? 'Monitoreo de emergencias'
+            : 'Botón de emergencia';
       case HomeSection.contactos: return 'Contactos de emergencia';
     }
   }
@@ -319,6 +339,8 @@ class EmergenciaPage extends StatefulWidget {
     required this.email,
     required this.phone,
     required this.role,
+    this.grupo,
+    this.plantel,
   });
 
   final String userId;
@@ -326,6 +348,8 @@ class EmergenciaPage extends StatefulWidget {
   final String email;
   final String phone;
   final String role;
+  final String? grupo;
+  final String? plantel;
 
   @override
   State<EmergenciaPage> createState() => _EmergenciaPageState();
@@ -333,37 +357,36 @@ class EmergenciaPage extends StatefulWidget {
 
 class _EmergenciaPageState extends State<EmergenciaPage> {
   bool _enviando = false;
+  Future<List<SosItem>>? _feedFuture;
 
-  bool get _esAlumno => widget.role.trim().toLowerCase() == kRolPermitidoEmergencia.toLowerCase();
+  bool get _esAlumno => isAlumnoRole(widget.role);
+
+  @override
+  void initState() {
+    super.initState();
+    if (!_esAlumno) {
+      _feedFuture = _cargarFeed();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    Widget boton = FilledButton.icon(
+    if (_esAlumno) {
+      return _buildAlumnoContent();
+    }
+    return _buildMonitoreoContent();
+  }
+
+  Widget _buildAlumnoContent() {
+    final boton = FilledButton.icon(
       icon: const Icon(Icons.sos, size: 32),
       label: const Padding(
         padding: EdgeInsets.symmetric(vertical: 16.0),
         child: Text('ENVIAR EMERGENCIA', style: TextStyle(fontSize: 18)),
       ),
-      onPressed: (!_esAlumno || _enviando) ? null : _manejarBoton,
+      onPressed: _enviando ? null : _manejarBoton,
       style: FilledButton.styleFrom(minimumSize: const Size(280, 64)),
     );
-
-    if (!_esAlumno) {
-      boton = Stack(
-        children: [
-          boton,
-          Positioned.fill(
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(16),
-                onTap: _mostrarMensajeRol,
-              ),
-            ),
-          ),
-        ],
-      );
-    }
 
     return SafeArea(
       minimum: const EdgeInsets.all(24),
@@ -372,14 +395,177 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
         children: [
           boton,
           const SizedBox(height: 12),
-          if (!_esAlumno)
-            const Text(
-              'Solo los alumnos pueden enviar una emergencia.',
-              textAlign: TextAlign.center,
-            ),
+          const Text(
+            'Presiona solo si necesitas ayuda inmediata.',
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
+  }
+
+  Widget _buildMonitoreoContent() {
+    final future = _feedFuture;
+    return SafeArea(
+      minimum: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Monitoreo de emergencias',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 4),
+          const Text('Desliza hacia abajo para actualizar el listado.'),
+          const SizedBox(height: 16),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _refrescarFeed,
+              child: FutureBuilder<List<SosItem>>(
+                future: future,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting ||
+                      future == null) {
+                    return _buildLoadingList();
+                  }
+                  if (snapshot.hasError) {
+                    return _buildMessageList(
+                      Text(
+                        'No se pudo cargar el feed: ${snapshot.error}',
+                        textAlign: TextAlign.center,
+                      ),
+                      action: FilledButton.icon(
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Reintentar'),
+                        onPressed: () {
+                          _refrescarFeed();
+                        },
+                      ),
+                    );
+                  }
+                  final items = snapshot.data ?? [];
+                  if (items.isEmpty) {
+                    return _buildMessageList(
+                      const Text(
+                        'No hay emergencias activas en este momento.',
+                        textAlign: TextAlign.center,
+                      ),
+                    );
+                  }
+                  return ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    itemCount: items.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final item = items[index];
+                      return Card(
+                        child: ListTile(
+                          leading: const CircleAvatar(
+                            backgroundColor: Colors.redAccent,
+                            child: Icon(Icons.warning, color: Colors.white),
+                          ),
+                          title: Text(item.nombre),
+                          subtitle: Text(_detalleItem(item)),
+                          trailing: _buildEstadoChip(item),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<List<SosItem>> _cargarFeed() {
+    return EmergenciaService.obtenerFeedEmergencias(
+      grupo: widget.grupo,
+      plantel: widget.plantel,
+    );
+  }
+
+  Future<void> _refrescarFeed() async {
+    final future = _cargarFeed();
+    setState(() => _feedFuture = future);
+    await future;
+  }
+
+  Widget _buildLoadingList() {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: const [
+        SizedBox(height: 80),
+        Center(child: CircularProgressIndicator()),
+      ],
+    );
+  }
+
+  Widget _buildMessageList(Widget child, {Widget? action}) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 16),
+      children: [
+        Center(child: child),
+        if (action != null) ...[
+          const SizedBox(height: 16),
+          Center(child: action),
+        ],
+      ],
+    );
+  }
+
+  String _detalleItem(SosItem item) {
+    final grupo = (item.grupo?.isNotEmpty ?? false) ? item.grupo : 'Sin grupo';
+    final rol = (item.rol?.isNotEmpty ?? false) ? item.rol : '—';
+    final lastUpdate = _formatDateTime(item.lastUpdate);
+    final coords = (item.lat != null && item.lng != null)
+        ? '\nUbicación aprox.: ${item.lat!.toStringAsFixed(4)}, ${item.lng!.toStringAsFixed(4)}'
+        : '';
+    return 'Grupo: $grupo\nRol: $rol\nÚltima actualización: $lastUpdate$coords';
+  }
+
+  Widget _buildEstadoChip(SosItem item) {
+    final expires = item.expiresAt;
+    late final String texto;
+    late final Color fondo;
+    late final Color textoColor;
+    if (expires == null) {
+      texto = 'En seguimiento';
+      fondo = Colors.orange.shade100;
+      textoColor = Colors.orange.shade700;
+    } else {
+      final diff = expires.difference(DateTime.now());
+      if (diff.isNegative) {
+        texto = 'Expirada';
+        fondo = Colors.grey.shade200;
+        textoColor = Colors.grey.shade700;
+      } else {
+        final mins = diff.inMinutes;
+        final secs = diff.inSeconds % 60;
+        texto = 'Expira en ${mins}m ${secs.toString().padLeft(2, '0')}s';
+        fondo = Colors.redAccent.shade100;
+        textoColor = Colors.redAccent.shade700;
+      }
+    }
+    return Chip(
+      backgroundColor: fondo,
+      label: Text(
+        texto,
+        style: TextStyle(color: textoColor),
+      ),
+    );
+  }
+
+  String _formatDateTime(DateTime? date) {
+    if (date == null) return '—';
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    return '$day/$month $hour:$minute';
   }
 
   Future<void> _manejarBoton() async {
@@ -438,12 +624,13 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
     return EmergenciaService.enviarEmergenciaAlBackend(
       idUsuario: widget.userId,
       nombreUsuario: widget.displayName,
+      email: widget.email,
       rol: widget.role,
-      grupo: null,
-      plantel: null,
+      grupo: widget.grupo,
+      plantel: widget.plantel,
       fechaHoraLocal: fecha,
       ubicacion: null,
-      dispositivo: dispositivo, email: '',
+      dispositivo: dispositivo,
     );
   }
 
@@ -462,11 +649,6 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
     return '${segundos}s';
   }
 
-  void _mostrarMensajeRol() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Solo los alumnos pueden usar el botón de emergencia.')),
-    );
-  }
 }
 
 class ContactosPage extends StatefulWidget {

@@ -1,14 +1,17 @@
 // lib/services/notification_service.dart
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:boton_de_emergencia/auth.dart';
 
 import '../firebase_options.dart';
+import '../roles.dart';
 
 final FlutterLocalNotificationsPlugin _flnp =
     FlutterLocalNotificationsPlugin();
@@ -22,8 +25,26 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await NotificationService.handleRemoteMessage(message);
 }
 
+@pragma('vm:entry-point')
+void notificationTapBackground(NotificationResponse response) {
+  NotificationService.handleNotificationResponse(response);
+}
+
 class NotificationService {
   static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+  static GlobalKey<NavigatorState>? _navigatorKey;
+  static RemoteMessage? _initialMessage;
+  static bool _initialMessageHandled = false;
+  static const AndroidNotificationChannel _emergencyChannel =
+      AndroidNotificationChannel(
+    'sos_emergencias',
+    'Alertas de emergencia',
+    description: 'Notificaciones críticas del botón de emergencia',
+    importance: Importance.max,
+    playSound: true,
+    enableVibration: true,
+  );
+  static const String _payloadEmergency = 'sos_alert';
 
   static String? _tokenFcm;
   static String? _idUsuarioActual;
@@ -32,10 +53,12 @@ class NotificationService {
   static String? _grupoActual;
   static String? _plantelActual;
   static String? _tipoDispositivo;
+  static String? _emailActual;
 
   static final Set<String> _topicsSuscritos = <String>{};
 
-  static Future<void> initialize() async {
+  static Future<void> initialize({GlobalKey<NavigatorState>? navigatorKey}) async {
+    _navigatorKey = navigatorKey;
     try {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
@@ -47,7 +70,6 @@ class NotificationService {
 
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-    // 👇 inicialización mínima, sin canales manuales
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosInit = DarwinInitializationSettings(
       requestAlertPermission: true,
@@ -58,10 +80,19 @@ class NotificationService {
     try {
       await _flnp.initialize(
         const InitializationSettings(android: androidInit, iOS: iosInit),
+        onDidReceiveNotificationResponse: handleNotificationResponse,
+        onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
       );
+      await _createAndroidChannel();
     } catch (e) {
       debugPrint('Error inicializando notificaciones locales: $e');
     }
+
+    await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
 
     try {
       await _requestPermissions();
@@ -70,8 +101,16 @@ class NotificationService {
     }
 
     FirebaseMessaging.onMessage.listen((message) async {
-      await handleRemoteMessage(message);
+      await handleRemoteMessage(message, fromForeground: true);
     });
+
+    FirebaseMessaging.onMessageOpenedApp.listen(_handleOpenedMessage);
+
+    final initial = await FirebaseMessaging.instance.getInitialMessage();
+    if (initial != null && _esMensajeSos(initial)) {
+      _initialMessage = initial;
+      _initialMessageHandled = false;
+    }
 
     await _obtenerTokenInicial();
 
@@ -96,33 +135,151 @@ class NotificationService {
         ?.requestNotificationsPermission();
   }
 
-  static Future<void> handleRemoteMessage(RemoteMessage msg) async {
-    await showTestAlarm(); // para probar, simplemente mostramos la misma alarma
+  static Future<void> _createAndroidChannel() async {
+    final androidPlugin =
+        _flnp.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    await androidPlugin?.createNotificationChannel(_emergencyChannel);
   }
 
-  static Future<void> showTestAlarm() async {
+  static Future<void> handleRemoteMessage(RemoteMessage msg,
+      {bool fromForeground = false}) async {
+    if (!_esMensajeSos(msg)) return;
+    await _mostrarNotificacionEmergencia(msg);
+    if (fromForeground) {
+      _mostrarAvisoForeground(msg);
+    }
+  }
+
+  static Future<void> _mostrarNotificacionEmergencia(RemoteMessage msg) async {
+    final data = Map<String, dynamic>.from(msg.data);
+    final title = msg.notification?.title ?? _tituloDesdeData(data);
+    final body = msg.notification?.body ?? _mensajeDesdeData(data);
+    final payload = jsonEncode({'type': _payloadEmergency, 'data': data});
+    final id = data['sosId']?.hashCode ??
+        data['sos_id']?.hashCode ??
+        msg.sentTime?.millisecondsSinceEpoch ??
+        DateTime.now().millisecondsSinceEpoch ~/ 1000;
+
     await _flnp.show(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      'ALERTA DE PRUEBA',
-      'Disparo local desde el botón',
-      const NotificationDetails(
+      id,
+      title,
+      body,
+      NotificationDetails(
         android: AndroidNotificationDetails(
-          'test_channel', // canal simple sin config rara
-          'Test',
-          channelDescription: 'Canal de prueba',
+          _emergencyChannel.id,
+          _emergencyChannel.name,
+          channelDescription: _emergencyChannel.description,
           importance: Importance.max,
-          priority: Priority.max,
+          priority: Priority.high,
           playSound: true,
           enableVibration: true,
+          ticker: 'Emergencia',
           category: AndroidNotificationCategory.alarm,
         ),
-        iOS: DarwinNotificationDetails(
+        iOS: const DarwinNotificationDetails(
           presentAlert: true,
           presentSound: true,
           presentBadge: true,
         ),
       ),
+      payload: payload,
     );
+  }
+
+  static void _mostrarAvisoForeground(RemoteMessage msg) {
+    if (!isMonitoringRole(_rolActual)) return;
+    final context = _navigatorKey?.currentContext;
+    if (context == null) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+    final body = _mensajeDesdeData(Map<String, dynamic>.from(msg.data));
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(body),
+        action: SnackBarAction(
+          label: 'Ver',
+          onPressed: () {
+            unawaited(_navegarAMonitoreo());
+          },
+        ),
+      ),
+    );
+  }
+
+  static String _tituloDesdeData(Map<String, dynamic> data) {
+    final alumno = data['nombre'] ?? data['student'] ?? data['alumno'];
+    if (alumno != null && alumno.toString().trim().isNotEmpty) {
+      return 'Emergencia de ${alumno.toString().trim()}';
+    }
+    return 'Botón de emergencia activado';
+  }
+
+  static String _mensajeDesdeData(Map<String, dynamic> data) {
+    final alumno = (data['nombre'] ?? data['student'] ?? data['alumno'])
+            ?.toString()
+            .trim() ??
+        'Un alumno';
+    final grupo = (data['grupo'] ?? data['group'])?.toString().trim();
+    if (grupo != null && grupo.isNotEmpty) {
+      return '$alumno (${grupo}) necesita ayuda.';
+    }
+    return '$alumno necesita ayuda.';
+  }
+
+  static bool _esMensajeSos(RemoteMessage msg) {
+    final data = msg.data;
+    final tipo = (data['tipo'] ?? data['type'] ?? data['op'])?.toString().toLowerCase();
+    if (_contieneSos(tipo)) return true;
+    final categoria = (data['category'] ?? data['categoria'])?.toString().toLowerCase();
+    if (_contieneSos(categoria)) return true;
+    final tag = (data['tag'] ?? data['topic'])?.toString().toLowerCase();
+    if (_contieneSos(tag)) return true;
+    return false;
+  }
+
+  static bool _contieneSos(String? valor) {
+    if (valor == null) return false;
+    return valor.contains('sos');
+  }
+
+  static Future<void> _handleOpenedMessage(RemoteMessage message) async {
+    if (!_esMensajeSos(message)) return;
+    if (!isMonitoringRole(_rolActual)) return;
+    _initialMessageHandled = true;
+    await _navegarAMonitoreo();
+  }
+
+  static Future<void> _navegarAMonitoreo() async {
+    final navigator = _navigatorKey?.currentState;
+    if (navigator == null) return;
+    navigator.pushNamed('/home', arguments: const {'openEmergencyFeed': true});
+  }
+
+  static void handleNotificationResponse(NotificationResponse response) {
+    unawaited(_procesarPayload(response.payload));
+  }
+
+  static Future<void> _procesarPayload(String? payload) async {
+    if (payload == null) return;
+    try {
+      final data = jsonDecode(payload) as Map<String, dynamic>;
+      if (data['type'] == _payloadEmergency && isMonitoringRole(_rolActual)) {
+        await _navegarAMonitoreo();
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Error leyendo payload de notificación: $e');
+      }
+    }
+  }
+
+  static Future<void> maybeHandleInitialMessageAfterLogin() async {
+    if (_initialMessage == null || _initialMessageHandled) return;
+    if (!isMonitoringRole(_rolActual)) return;
+    _initialMessageHandled = true;
+    final message = _initialMessage!;
+    _initialMessage = null;
+    await _handleOpenedMessage(message);
   }
 
   static Future<void> _obtenerTokenInicial() async {
@@ -141,6 +298,7 @@ class NotificationService {
     required String idUsuario,
     required String rol,
     required String nombre,
+    required String email,
     String? grupo,
     String? plantel,
     required String tipoDispositivo,
@@ -151,8 +309,10 @@ class NotificationService {
     _grupoActual = grupo;
     _plantelActual = plantel;
     _tipoDispositivo = tipoDispositivo;
+    _emailActual = email;
     await _enviarRegistroTokenSiDisponible();
     await configurarSuscripcionesPorRol(rol: rol, plantel: plantel);
+    await maybeHandleInitialMessageAfterLogin();
   }
 
   static Future<void> _enviarRegistroTokenSiDisponible() async {
@@ -161,6 +321,7 @@ class NotificationService {
     final rol = _rolActual;
     final nombre = _nombreUsuario;
     final tipoDispositivo = _tipoDispositivo;
+    final email = _emailActual;
     if (token == null ||
         idUsuario == null ||
         rol == null ||
@@ -173,10 +334,11 @@ class NotificationService {
       idUsuario: idUsuario,
       rol: rol,
       nombre: nombre,
+      email: email ?? '',
       grupo: _grupoActual,
       plantel: _plantelActual,
       fcmToken: token,
-      tipoDispositivo: tipoDispositivo, email: '',
+      tipoDispositivo: tipoDispositivo,
     );
   }
 
@@ -185,7 +347,7 @@ class NotificationService {
     required String idUsuario,
     required String rol,
     required String nombre,
-    required String email,       // 👈 NUEVO
+    required String email,
     String? grupo,
     String? plantel,
     required String fcmToken,
@@ -279,6 +441,9 @@ class NotificationService {
     _grupoActual = null;
     _plantelActual = null;
     _tipoDispositivo = null;
+    _emailActual = null;
+    _initialMessage = null;
+    _initialMessageHandled = false;
   }
 
   static String? _topicPorPlantel(String prefijo, String? plantel) {

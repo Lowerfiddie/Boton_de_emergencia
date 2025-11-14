@@ -11,6 +11,8 @@ import 'home_screen.dart';
 import 'login_page.dart';
 import 'Servicios/notificaciones.dart';
 
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+
 final _passCtrl = TextEditingController();
 final _pass2Ctrl = TextEditingController();
 bool _showPass = false;
@@ -38,20 +40,23 @@ Future<void> main() async {
 
   // 🔹 Inicializa Firebase + FCM + notificaciones locales
   try {
-    await NotificationService.initialize();
+    await NotificationService.initialize(navigatorKey: rootNavigatorKey);
   } catch (e) {
     debugPrint('No se pudo inicializar NotificationService: $e');
   }
 
-  runApp(const MyApp());
+  runApp(MyApp(navigatorKey: rootNavigatorKey));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, required this.navigatorKey});
+
+  final GlobalKey<NavigatorState> navigatorKey;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+        navigatorKey: navigatorKey,
         title: 'Botón de Emergencia - Login',
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),

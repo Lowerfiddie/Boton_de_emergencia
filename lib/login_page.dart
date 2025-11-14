@@ -70,6 +70,8 @@ class _LoginPageState extends State<LoginPage> {
           email: user['email'] ?? _email.text.trim().toLowerCase(),
           phone: user['telefono'] ?? '—',
           role: user['rol'] ?? '—',
+          grupo: user['grupo'] as String?,
+          plantel: user['plantel'] as String?,
         );
         if (!mounted) return;
         Navigator.of(context).pushNamedAndRemoveUntil('/home', (r) => false);
