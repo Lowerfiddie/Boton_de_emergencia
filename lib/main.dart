@@ -37,7 +37,11 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 🔹 Inicializa Firebase + FCM + notificaciones locales
-  await NotificationService.initialize();
+  try {
+    await NotificationService.initialize();
+  } catch (e) {
+    debugPrint('No se pudo inicializar NotificationService: $e');
+  }
 
   runApp(const MyApp());
 }
