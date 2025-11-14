@@ -61,4 +61,119 @@ class EmergenciaService {
       }
       return ok;
   }
+
+  static Future<List<SosItem>> obtenerFeedEmergencias({
+    String? grupo,
+    String? plantel,
+  }) async {
+    final uri = Uri.parse(endpointEmergencia);
+    final payload = <String, dynamic>{'op': 'sos_feed'};
+    if (grupo != null && grupo.trim().isNotEmpty) {
+      payload['grupo'] = grupo.trim();
+    }
+    if (plantel != null && plantel.trim().isNotEmpty) {
+      payload['plantel'] = plantel.trim();
+    }
+
+    final response = await http.post(
+      uri,
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
+
+    if (kDebugMode) {
+      debugPrint('sos_feed status: ${response.statusCode}');
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('No se pudo obtener el feed (${response.statusCode})');
+    }
+
+    final decoded = jsonDecode(response.body);
+    final items = _extraerLista(decoded);
+    return items.map(SosItem.fromJson).toList();
+  }
+
+  static List<Map<String, dynamic>> _extraerLista(dynamic decoded) {
+    List<dynamic>? raw;
+    if (decoded is List) {
+      raw = decoded;
+    } else if (decoded is Map<String, dynamic>) {
+      for (final key in ['items', 'sos', 'data', 'result']) {
+        final value = decoded[key];
+        if (value is List) {
+          raw = value;
+          break;
+        }
+      }
+    }
+    final base = raw ?? <dynamic>[];
+    return base
+        .whereType<Map>()
+        .map((entry) =>
+            entry.map((key, value) => MapEntry(key.toString(), value)))
+        .toList();
+  }
+}
+
+class SosItem {
+  const SosItem({
+    required this.sosId,
+    required this.userId,
+    required this.nombre,
+    this.rol,
+    this.grupo,
+    this.lat,
+    this.lng,
+    this.lastUpdate,
+    this.expiresAt,
+  });
+
+  final String sosId;
+  final String userId;
+  final String nombre;
+  final String? rol;
+  final String? grupo;
+  final double? lat;
+  final double? lng;
+  final DateTime? lastUpdate;
+  final DateTime? expiresAt;
+
+  factory SosItem.fromJson(Map<String, dynamic> json) {
+    return SosItem(
+      sosId: _asString(json['sosId'] ?? json['sos_id'] ?? json['id']) ?? '',
+      userId: _asString(json['userId'] ?? json['uid']) ?? '',
+      nombre: _asString(json['nombre'] ?? json['name']) ?? 'Alumno',
+      rol: _asString(json['rol']),
+      grupo: _asString(json['grupo'] ?? json['group']),
+      lat: _asDouble(json['lat']),
+      lng: _asDouble(json['lng']),
+      lastUpdate: _asDate(json['lastUpdate'] ?? json['last_update']),
+      expiresAt: _asDate(json['expiresAt'] ?? json['expires_at']),
+    );
+  }
+}
+
+String? _asString(dynamic value) {
+  if (value == null) return null;
+  final str = value.toString();
+  return str.isEmpty ? null : str;
+}
+
+double? _asDouble(dynamic value) {
+  if (value == null) return null;
+  if (value is num) return value.toDouble();
+  return double.tryParse(value.toString());
+}
+
+DateTime? _asDate(dynamic value) {
+  if (value == null) return null;
+  if (value is DateTime) return value;
+  if (value is int) {
+    return DateTime.fromMillisecondsSinceEpoch(value);
+  }
+  if (value is String && value.isNotEmpty) {
+    return DateTime.tryParse(value);
+  }
+  return null;
 }

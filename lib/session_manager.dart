@@ -8,6 +8,8 @@ class SessionManager {
   static const _kEmail = 'email';
   static const _kPhone = 'phone';
   static const _kRole = 'role';
+  static const _kGrupo = 'grupo';
+  static const _kPlantel = 'plantel';
 
   static Future<bool> isRegistered() async {
     final sp = await SharedPreferences.getInstance();
@@ -22,15 +24,43 @@ class SessionManager {
     String? email,
     String? phone,
     String? role,
+    String? grupo,
+    String? plantel,
   }) async {
     final sp = await SharedPreferences.getInstance();
     await sp.setBool(_kIsRegistered, true);
     await sp.setString(_kUserId, userId);
     await sp.setString(_kProvider, provider);
-    if (displayName != null) await sp.setString(_kDisplayName, displayName);
-    if (email != null) await sp.setString(_kEmail, email);
-    if (phone != null) await sp.setString(_kPhone, phone);
-    if (role != null) await sp.setString(_kRole, role);
+    if (displayName != null) {
+      await sp.setString(_kDisplayName, displayName);
+    } else {
+      await sp.remove(_kDisplayName);
+    }
+    if (email != null) {
+      await sp.setString(_kEmail, email);
+    } else {
+      await sp.remove(_kEmail);
+    }
+    if (phone != null) {
+      await sp.setString(_kPhone, phone);
+    } else {
+      await sp.remove(_kPhone);
+    }
+    if (role != null) {
+      await sp.setString(_kRole, role);
+    } else {
+      await sp.remove(_kRole);
+    }
+    if (grupo != null) {
+      await sp.setString(_kGrupo, grupo);
+    } else {
+      await sp.remove(_kGrupo);
+    }
+    if (plantel != null) {
+      await sp.setString(_kPlantel, plantel);
+    } else {
+      await sp.remove(_kPlantel);
+    }
   }
 
   static Future<Map<String, String?>> loadSession() async {
@@ -42,6 +72,8 @@ class SessionManager {
       'email': sp.getString(_kEmail),
       'phone': sp.getString(_kPhone),
       'role': sp.getString(_kRole),
+      'grupo': sp.getString(_kGrupo),
+      'plantel': sp.getString(_kPlantel),
     };
   }
 
