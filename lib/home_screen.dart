@@ -367,15 +367,17 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
   @override
   void initState() {
     super.initState();
+
+    // ✅ Solo roles NO alumno consultan el historial/feed.
     if (!_esAlumno) {
       _feedFuture = _cargarFeed();
       _feedSubscription =
           NotificationService.feedRefreshStream.listen((_) async {
-        if (!mounted) return;
-        debugPrint(
-            '🔄 Refrescando feed tras notificación en primer plano para ${widget.role}.');
-        await refrescarFeed();
-      });
+            if (!mounted) return;
+            debugPrint(
+                '🔄 Refrescando feed tras notificación en primer plano para ${widget.role}.');
+            await refrescarFeed();
+          });
     }
   }
 
@@ -422,17 +424,18 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
 
   Widget _buildMonitoreoContent() {
     final future = _feedFuture;
+
     return SafeArea(
       minimum: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Monitoreo de emergencias',
+            'Historial de emergencias',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 4),
-          const Text('Desliza hacia abajo para actualizar el listado.'),
+          const Text('Solo se registra cuando un alumno presiona el botón.'),
           const SizedBox(height: 16),
           Expanded(
             child: RefreshIndicator(
@@ -447,7 +450,7 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
                   if (snapshot.hasError) {
                     return _buildMessageList(
                       Text(
-                        'No se pudo cargar el feed: ${snapshot.error}',
+                        'No se pudo cargar el historial: ${snapshot.error}',
                         textAlign: TextAlign.center,
                       ),
                       action: FilledButton.icon(
@@ -459,7 +462,11 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
                       ),
                     );
                   }
-                  final items = snapshot.data ?? [];
+
+                  final allItems = snapshot.data ?? [];
+                  // ✅ SOLO ACTIVAS (padre/maestro)
+                  final items = _soloActivas(allItems);
+
                   if (items.isEmpty) {
                     return _buildMessageList(
                       const Text(
@@ -468,6 +475,7 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
                       ),
                     );
                   }
+
                   return ListView.separated(
                     physics: const AlwaysScrollableScrollPhysics(),
                     itemCount: items.length,
@@ -482,7 +490,7 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
                           ),
                           title: Text(item.nombre),
                           subtitle: Text(_detalleItem(item)),
-                          trailing: _buildEstadoChip(item),
+                          trailing: _buildEstadoChip(item), // ahora ya no saldrá "Expirada"
                         ),
                       );
                     },
@@ -554,11 +562,25 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
     return 'Grupo: $grupo\nRol: $rol\nÚltima actualización: $lastUpdate$coords';
   }
 
+  bool _esActiva(SosItem item) {
+    final expires = item.expiresAt;
+    // Si no tiene expiresAt, se considera activa (en seguimiento)
+    if (expires == null) return true;
+    // Activa si expira en el futuro
+    return expires.isAfter(DateTime.now());
+  }
+
+  List<SosItem> _soloActivas(List<SosItem> items) {
+    return items.where(_esActiva).toList();
+  }
+
+
   Widget _buildEstadoChip(SosItem item) {
     final expires = item.expiresAt;
     late final String texto;
     late final Color fondo;
     late final Color textoColor;
+
     if (expires == null) {
       texto = 'En seguimiento';
       fondo = Colors.orange.shade100;
@@ -577,6 +599,7 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
         textoColor = Colors.redAccent.shade700;
       }
     }
+
     return Chip(
       backgroundColor: fondo,
       label: Text(
@@ -597,6 +620,17 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
 
   Future<void> _manejarBoton() async {
     final messenger = ScaffoldMessenger.of(context);
+
+    // ✅ Blindaje: aunque alguien “no alumno” llegara aquí, NO se registra historial.
+    if (!_esAlumno) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Solo un alumno puede generar una emergencia.'),
+        ),
+      );
+      return;
+    }
+
     final ahora = DateTime.now();
 
     // Restricción de horario
@@ -615,7 +649,9 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
         final restante = kBloqueoEmergencia - diff;
         messenger.showSnackBar(
           SnackBar(
-            content: Text('Botón bloqueado. Intenta de nuevo en ${_formatDuration(restante)}.'),
+            content: Text(
+              'Botón bloqueado. Intenta de nuevo en ${_formatDuration(restante)}.',
+            ),
           ),
         );
         return;
@@ -630,7 +666,7 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
       if (enviado) {
         await EmergencyUsageStore.guardarActivacion(userKey, ahora);
         messenger.showSnackBar(
-          const SnackBar(content: Text('Emergencia enviada.')), // Bloqueo de 15 minutos
+          const SnackBar(content: Text('Emergencia enviada.')),
         );
       } else {
         messenger.showSnackBar(
@@ -647,12 +683,15 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
   }
 
   Future<bool> _enviarEmergencia(DateTime fecha) async {
+    // ✅ Blindaje extra: el backend solo debe recibir eventos creados por ALUMNO.
+    if (!_esAlumno) return false;
+
     final dispositivo = defaultTargetPlatform.name;
     return EmergenciaService.enviarEmergenciaAlBackend(
       idUsuario: widget.userId,
       nombreUsuario: widget.displayName,
       email: widget.email,
-      rol: widget.role,
+      rol: widget.role, // seguirá siendo "alumno"
       grupo: widget.grupo,
       plantel: widget.plantel,
       fechaHoraLocal: fecha,
@@ -662,8 +701,18 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
   }
 
   bool _estaDentroHorario(DateTime ahora) {
-    final inicio = DateTime(ahora.year, ahora.month, ahora.day, kHoraInicioEmergencia);
-    final fin = DateTime(ahora.year, ahora.month, ahora.day, kHoraFinEmergencia);
+    final inicio = DateTime(
+      ahora.year,
+      ahora.month,
+      ahora.day,
+      kHoraInicioEmergencia,
+    );
+    final fin = DateTime(
+      ahora.year,
+      ahora.month,
+      ahora.day,
+      kHoraFinEmergencia,
+    );
     return !ahora.isBefore(inicio) && !ahora.isAfter(fin);
   }
 
@@ -675,7 +724,6 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
     }
     return '${segundos}s';
   }
-
 }
 
 class ContactosPage extends StatefulWidget {
