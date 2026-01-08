@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:math' as Math;
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -30,7 +30,7 @@ class EmergencyMapScreen extends StatefulWidget {
 }
 
 class _EmergencyMapScreenState extends State<EmergencyMapScreen> {
-  static const MarkerId _markerId = MarkerId('emergency_location');
+  static final MarkerId _markerId = MarkerId('emergency_location');
 
   GoogleMapController? _mapController;
   late SosItem _item;
@@ -128,10 +128,6 @@ class _EmergencyMapScreenState extends State<EmergencyMapScreen> {
     }
   }
 
-  Future<bool> _handleBack() async {
-    return _canExit;
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -145,8 +141,8 @@ class _EmergencyMapScreenState extends State<EmergencyMapScreen> {
             : 'Expira: ${_formatDateTime(_expiresAt)}');
     final viewerRole = widget.args.viewerRole;
 
-    return WillPopScope(
-      onWillPop: _handleBack,
+    return PopScope(
+      canPop: _canExit,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Mapa de emergencia'),
@@ -233,13 +229,13 @@ class _EmergencyMapScreenState extends State<EmergencyMapScreen> {
     final dLng = _toRadians(b.longitude - a.longitude);
     final lat1 = _toRadians(a.latitude);
     final lat2 = _toRadians(b.latitude);
-    final sinDLat = Math.sin(dLat / 2);
-    final sinDLng = Math.sin(dLng / 2);
+    final sinDLat = math.sin(dLat / 2);
+    final sinDLng = math.sin(dLng / 2);
     final aVal = sinDLat * sinDLat +
-        Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng;
-    final cVal = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
+        math.cos(lat1) * math.cos(lat2) * sinDLng * sinDLng;
+    final cVal = 2 * math.atan2(math.sqrt(aVal), math.sqrt(1 - aVal));
     return earthRadius * cVal;
   }
 
-  double _toRadians(double deg) => deg * (Math.pi / 180);
+  double _toRadians(double deg) => deg * (math.pi / 180);
 }
