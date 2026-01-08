@@ -14,8 +14,8 @@ import 'roles.dart';
 
 const String kRolPermitidoEmergencia = kRolAlumnoEstandar;
 const Duration kBloqueoEmergencia = Duration(minutes: 1);
-const int kHoraInicioEmergencia = 7;
-const int kHoraFinEmergencia = 22;
+const int kHoraInicioEmergencia = 17;
+const int kHoraFinEmergencia = 2;
 
 enum HomeSection { perfil, emergencia, contactos }
 

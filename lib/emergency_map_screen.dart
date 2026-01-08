@@ -30,7 +30,7 @@ class EmergencyMapScreen extends StatefulWidget {
 }
 
 class _EmergencyMapScreenState extends State<EmergencyMapScreen> {
-  static final MarkerId _markerId = MarkerId('emergency_location');
+  static const MarkerId _markerId = MarkerId('emergency_location');
 
   GoogleMapController? _mapController;
   late SosItem _item;
