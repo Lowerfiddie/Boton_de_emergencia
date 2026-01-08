@@ -10,8 +10,10 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:boton_de_emergencia/auth.dart';
 
+import '../emergency_map_screen.dart';
 import '../firebase_options.dart';
 import '../roles.dart';
+import 'emergencia_service.dart';
 
 final FlutterLocalNotificationsPlugin _flnp =
     FlutterLocalNotificationsPlugin();
@@ -225,7 +227,7 @@ class NotificationService {
         action: SnackBarAction(
           label: 'Ver',
           onPressed: () {
-            unawaited(_navegarAMonitoreo());
+            unawaited(_navegarAEmergenciaSiAplica(Map<String, dynamic>.from(msg.data)));
           },
         ),
       ),
@@ -273,7 +275,7 @@ class NotificationService {
     if (!isMonitoringRole(_rolActual)) return;
     _initialMessageHandled = true;
     debugPrint('🧭 Abriendo feed de emergencias desde notificación.');
-    await _navegarAMonitoreo();
+    await _navegarAEmergenciaSiAplica(Map<String, dynamic>.from(message.data));
   }
 
   static Future<void> _navegarAMonitoreo() async {
@@ -291,12 +293,45 @@ class NotificationService {
     try {
       final data = jsonDecode(payload) as Map<String, dynamic>;
       if (data['type'] == _payloadEmergency && isMonitoringRole(_rolActual)) {
-        await _navegarAMonitoreo();
+        final payloadData =
+            Map<String, dynamic>.from(data['data'] as Map? ?? {});
+        await _navegarAEmergenciaSiAplica(payloadData);
       }
     } catch (e) {
       if (kDebugMode) {
         debugPrint('Error leyendo payload de notificación: $e');
       }
+    }
+  }
+
+  static Future<void> _navegarAEmergenciaSiAplica(
+      Map<String, dynamic> data) async {
+    final navigator = _navigatorKey?.currentState;
+    if (navigator == null) return;
+    final item = _sosItemFromData(data);
+    if (item?.lat == null ||
+        item?.lng == null ||
+        (item?.lat == 0.0 && item?.lng == 0.0)) {
+      await _navegarAMonitoreo();
+      return;
+    }
+    navigator.pushNamed(
+      '/emergency-map',
+      arguments: EmergencyMapArgs(
+        item: item!,
+        viewerRole: _rolActual ?? '',
+        viewerId: _idUsuarioActual ?? '',
+      ),
+    );
+  }
+
+  static SosItem? _sosItemFromData(Map<String, dynamic> data) {
+    try {
+      final item = SosItem.fromJson(data);
+      if (item.sosId.isEmpty) return null;
+      return item;
+    } catch (_) {
+      return null;
     }
   }
 
