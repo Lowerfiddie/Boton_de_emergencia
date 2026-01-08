@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'session_manager.dart';
 import 'email_registration_screen.dart';
 import 'auth.dart';
+import 'emergency_map_screen.dart';
 import 'home_screen.dart';
 import 'login_page.dart';
 import 'Servicios/notificaciones.dart';
@@ -80,6 +81,12 @@ class MyApp extends StatelessWidget {
             final acc = settings.arguments as GoogleSignInAccount;
             return MaterialPageRoute(
               builder: (_) => RegistrationScreen(googleAccount: acc),
+            );
+          }
+          if (settings.name == '/emergency-map') {
+            final args = settings.arguments as EmergencyMapArgs;
+            return MaterialPageRoute(
+              builder: (_) => EmergencyMapScreen(args: args),
             );
           }
           return null; // usa el handler por defecto si no coincide

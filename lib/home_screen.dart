@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'Servicios/notificaciones.dart';
 import 'Servicios/emergencia_service.dart';
+import 'emergency_map_screen.dart';
 import 'roles.dart';
 
 const String kRolPermitidoEmergencia = kRolAlumnoEstandar;
@@ -476,25 +477,26 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
                     );
                   }
 
-                  return ListView.separated(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    itemCount: items.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
-                      final item = items[index];
-                      return Card(
-                        child: ListTile(
-                          leading: const CircleAvatar(
-                            backgroundColor: Colors.redAccent,
-                            child: Icon(Icons.warning, color: Colors.white),
-                          ),
-                          title: Text(item.nombre),
-                          subtitle: Text(_detalleItem(item)),
-                          trailing: _buildEstadoChip(item), // ahora ya no saldrá "Expirada"
-                        ),
+                      return ListView.separated(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        itemCount: items.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final item = items[index];
+                          return Card(
+                            child: ListTile(
+                              leading: const CircleAvatar(
+                                backgroundColor: Colors.redAccent,
+                                child: Icon(Icons.warning, color: Colors.white),
+                              ),
+                              title: Text(item.nombre),
+                              subtitle: Text(_detalleItem(item)),
+                              trailing: _buildEstadoChip(item), // ahora ya no saldrá "Expirada"
+                              onTap: () => _abrirMapaSiDisponible(item),
+                            ),
+                          );
+                        },
                       );
-                    },
-                  );
                 },
               ),
             ),
@@ -572,6 +574,25 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
 
   List<SosItem> _soloActivas(List<SosItem> items) {
     return items.where(_esActiva).toList();
+  }
+
+  void _abrirMapaSiDisponible(SosItem item) {
+    if (item.lat == null ||
+        item.lng == null ||
+        (item.lat == 0.0 && item.lng == 0.0)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Esta emergencia no tiene ubicación.')),
+      );
+      return;
+    }
+    Navigator.of(context).pushNamed(
+      '/emergency-map',
+      arguments: EmergencyMapArgs(
+        item: item,
+        viewerRole: widget.role,
+        viewerId: widget.userId,
+      ),
+    );
   }
 
 
