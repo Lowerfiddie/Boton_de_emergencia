@@ -11,6 +11,7 @@ import 'emergencia_page.dart';
 import 'Servicios/notificaciones.dart';
 import 'Servicios/emergencia_service.dart';
 import 'roles.dart';
+import 'Servicios/servicio_ubicacion.dart';
 
 const String kRolPermitidoEmergencia = kRolAlumnoEstandar;
 const Duration kBloqueoEmergencia = Duration(minutes: 1);
@@ -700,18 +701,28 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
   }
 
   Future<bool> _enviarEmergencia(DateTime fecha) async {
-    // ✅ Blindaje extra: el backend solo debe recibir eventos creados por ALUMNO.
     if (!_esAlumno) return false;
 
     final dispositivo = defaultTargetPlatform.name;
+
+    final loc = await LocationService.getLatLng();
+    debugPrint('📍 LocationService.getLatLng() => $loc');
+
+    final lat = loc?.lat ?? 0.0;
+    final lng = loc?.lng ?? 0.0;
+
+    debugPrint('📍 Enviando emergencia con lat=$lat lng=$lng');
+
     return EmergenciaService.enviarEmergenciaAlBackend(
       idUsuario: widget.userId,
       nombreUsuario: widget.displayName,
       email: widget.email,
-      rol: widget.role, // seguirá siendo "alumno"
+      rol: widget.role,
       grupo: widget.grupo,
       plantel: widget.plantel,
       fechaHoraLocal: fecha,
+      lat: lat,
+      lng: lng,
       ubicacion: null,
       dispositivo: dispositivo,
     );
