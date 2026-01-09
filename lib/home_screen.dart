@@ -7,6 +7,7 @@ import 'session_manager.dart';
 import 'auth.dart'; // para googleSignIn
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'emergencia_page.dart';
 import 'Servicios/notificaciones.dart';
 import 'Servicios/emergencia_service.dart';
 import 'roles.dart';
@@ -14,7 +15,7 @@ import 'roles.dart';
 const String kRolPermitidoEmergencia = kRolAlumnoEstandar;
 const Duration kBloqueoEmergencia = Duration(minutes: 1);
 const int kHoraInicioEmergencia = 7;
-const int kHoraFinEmergencia = 22;
+const int kHoraFinEmergencia = 24;
 
 enum HomeSection { perfil, emergencia, contactos }
 
@@ -482,6 +483,7 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
                     separatorBuilder: (_, __) => const SizedBox(height: 8),
                     itemBuilder: (context, index) {
                       final item = items[index];
+
                       return Card(
                         child: ListTile(
                           leading: const CircleAvatar(
@@ -491,10 +493,25 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
                           title: Text(item.nombre),
                           subtitle: Text(_detalleItem(item)),
                           trailing: _buildEstadoChip(item), // ahora ya no saldrá "Expirada"
+
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => DetalleEmergenciaPage(emergencia: item),
+                              ),
+                            );
+                          },
+
+                          // si también quieres presionado largo:
+                          // onLongPress: () {
+                          //   debugPrint('Long press: ${item.nombre}');
+                          // },
                         ),
                       );
                     },
                   );
+
                 },
               ),
             ),
