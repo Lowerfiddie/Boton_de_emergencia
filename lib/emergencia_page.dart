@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-// Ajusta este import al archivo real donde esté SosItem
-import 'Servicios/emergencia_service.dart'; // o models/sos_item.dart
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class DetalleEmergenciaPage extends StatelessWidget {
-  final SosItem emergencia;
+  final dynamic emergencia; // luego lo tipamos a SosItem
 
   const DetalleEmergenciaPage({
     super.key,
@@ -13,13 +12,12 @@ class DetalleEmergenciaPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final titulo = emergencia.nombre;
-    final desc = emergencia.grupo ?? 'Sin grupo';
+    final desc = emergencia.grupo;
 
-    // Para el paso del mapa más adelante:
-    final hasCoords = emergencia.lat != null && emergencia.lng != null;
-    final coordsTxt = hasCoords
-        ? '${emergencia.lat!.toStringAsFixed(5)}, ${emergencia.lng!.toStringAsFixed(5)}'
-        : 'Sin ubicación';
+    final double? lat = emergencia.lat;
+    final double? lng = emergencia.lng;
+
+    final hasCoords = lat != null && lng != null && (lat != 0.0 || lng != 0.0);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Detalle de emergencia')),
@@ -28,23 +26,43 @@ class DetalleEmergenciaPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(titulo, style: Theme.of(context).textTheme.titleLarge),
+            Text(titulo.toString(), style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
-            Text(desc),
-            const SizedBox(height: 8),
-            Text('Coordenadas: $coordsTxt'),
+            Text(desc?.toString() ?? '—'),
             const SizedBox(height: 16),
 
-            // Placeholder del mapa (Paso 1)
-            Container(
-              height: 220,
+            // MAPA (solo si hay coords)
+            SizedBox(
+              height: 260,
               width: double.infinity,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey),
+              child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
+                child: hasCoords
+                    ? GoogleMap(
+                  initialCameraPosition: CameraPosition(
+                    target: LatLng(lat!, lng!),
+                    zoom: 16,
+                  ),
+                  myLocationEnabled: false,
+                  myLocationButtonEnabled: false,
+                  zoomControlsEnabled: false,
+                  markers: {
+                    Marker(
+                      markerId: const MarkerId('emergencia'),
+                      position: LatLng(lat!, lng!),
+                      infoWindow: InfoWindow(title: titulo.toString()),
+                    ),
+                  },
+                )
+                    : Container(
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text('Sin ubicación disponible'),
+                ),
               ),
-              child: const Text('Aquí irá el mapa'),
             ),
           ],
         ),

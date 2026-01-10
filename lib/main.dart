@@ -13,6 +13,9 @@ import 'login_page.dart';
 import 'Servicios/notificaciones.dart';
 import 'firebase_options.dart';
 
+import 'package:google_maps_flutter_android/google_maps_flutter_android.dart';
+import 'package:google_maps_flutter_platform_interface/google_maps_flutter_platform_interface.dart';
+
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 final _passCtrl = TextEditingController();
@@ -49,6 +52,11 @@ Future<void> main() async {
     await NotificationService.initialize(navigatorKey: rootNavigatorKey);
   } catch (e) {
     debugPrint('No se pudo inicializar NotificationService: $e');
+  }
+
+  final platform = GoogleMapsFlutterPlatform.instance;
+  if (platform is GoogleMapsFlutterAndroid) {
+    platform.useAndroidViewSurface = true; // Hybrid composition
   }
 
   runApp(MyApp(navigatorKey: rootNavigatorKey));
