@@ -13,11 +13,9 @@ import 'package:boton_de_emergencia/auth.dart';
 import '../firebase_options.dart';
 import '../roles.dart';
 
-final FlutterLocalNotificationsPlugin _flnp =
-    FlutterLocalNotificationsPlugin();
+final FlutterLocalNotificationsPlugin _flnp = FlutterLocalNotificationsPlugin();
 
-const String endpointRegisterToken =
-    kAppsScriptUrl;
+const String endpointRegisterToken = kAppsScriptUrl;
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -37,8 +35,9 @@ class NotificationService {
   static GlobalKey<NavigatorState>? _navigatorKey;
   static RemoteMessage? _initialMessage;
   static bool _initialMessageHandled = false;
+
   static const AndroidNotificationChannel _emergencyChannel =
-      AndroidNotificationChannel(
+  AndroidNotificationChannel(
     'emergencias_channel',
     'Emergencias',
     description: 'Notificaciones críticas del botón de emergencia',
@@ -46,6 +45,7 @@ class NotificationService {
     playSound: true,
     enableVibration: true,
   );
+
   static const String _payloadEmergency = 'sos_alert';
 
   static String? _tokenFcm;
@@ -59,9 +59,11 @@ class NotificationService {
 
   static final Set<String> _topicsSuscritos = <String>{};
   static final StreamController<void> _feedRefreshController =
-      StreamController<void>.broadcast();
+  StreamController<void>.broadcast();
 
   static Stream<void> get feedRefreshStream => _feedRefreshController.stream;
+
+  // ===================================================================================
 
   static Future<void> initialize({GlobalKey<NavigatorState>? navigatorKey}) async {
     _navigatorKey = navigatorKey;
@@ -152,7 +154,7 @@ class NotificationService {
 
   static Future<void> _createAndroidChannel() async {
     final androidPlugin =
-        _flnp.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    _flnp.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     await androidPlugin?.createNotificationChannel(_emergencyChannel);
   }
 
@@ -242,8 +244,8 @@ class NotificationService {
 
   static String _mensajeDesdeData(Map<String, dynamic> data) {
     final alumno = (data['nombre'] ?? data['student'] ?? data['alumno'])
-            ?.toString()
-            .trim() ??
+        ?.toString()
+        .trim() ??
         'Un alumno';
     final grupo = (data['grupo'] ?? data['group'])?.toString().trim();
     if (grupo != null && grupo.isNotEmpty) {
@@ -254,9 +256,12 @@ class NotificationService {
 
   static bool _esMensajeSos(RemoteMessage msg) {
     final data = msg.data;
-    final tipo = (data['tipo'] ?? data['type'] ?? data['op'])?.toString().toLowerCase();
+    final tipo = (data['tipo'] ?? data['type'] ?? data['op'])
+        ?.toString()
+        .toLowerCase();
     if (_contieneSos(tipo)) return true;
-    final categoria = (data['category'] ?? data['categoria'])?.toString().toLowerCase();
+    final categoria =
+    (data['category'] ?? data['categoria'])?.toString().toLowerCase();
     if (_contieneSos(categoria)) return true;
     final tag = (data['tag'] ?? data['topic'])?.toString().toLowerCase();
     if (_contieneSos(tag)) return true;
@@ -336,8 +341,10 @@ class NotificationService {
     _plantelActual = plantel;
     _tipoDispositivo = tipoDispositivo;
     _emailActual = email;
+
     debugPrint(
         'Configurando notificaciones -> user: $idUsuario, rol: $rol, grupo: $grupo, plantel: $plantel, dispositivo: $tipoDispositivo');
+
     await _enviarRegistroTokenSiDisponible();
     await configurarSuscripcionesPorRol(rol: rol, plantel: plantel);
     await maybeHandleInitialMessageAfterLogin();
@@ -350,6 +357,7 @@ class NotificationService {
     final nombre = _nombreUsuario;
     final tipoDispositivo = _tipoDispositivo;
     final email = _emailActual;
+
     if (token == null ||
         idUsuario == null ||
         rol == null ||
@@ -360,8 +368,8 @@ class NotificationService {
       return;
     }
 
-    debugPrint(
-        'Listo para registrar token. user: $idUsuario, rol: $rol, token: $token');
+    debugPrint('Listo para registrar token. user: $idUsuario, rol: $rol, token: $token');
+
     await registerTokenEnBackend(
       idUsuario: idUsuario,
       rol: rol,
@@ -374,7 +382,7 @@ class NotificationService {
     );
   }
 
-  // Registrar token FCM en backend (Google Sheets)
+  // ===================== MODIFICADO: register_token con redirect 302 =====================
   static Future<void> registerTokenEnBackend({
     required String idUsuario,
     required String rol,
@@ -385,39 +393,42 @@ class NotificationService {
     required String fcmToken,
     required String tipoDispositivo,
   }) async {
-    final uri = Uri.parse(endpointRegisterToken);
-    final payload = jsonEncode({
-      'op': 'register_token',      // 👈 IMPORTANTE
-      'userId': idUsuario,         // 👈 Apps Script usa userId
+    final base = Uri.parse(endpointRegisterToken);
+
+    final uri = base.replace(queryParameters: {
+      'op': 'register_token',
+      'userId': idUsuario,
       'nombre': nombre,
-      'email': email,              // 👈 aunque sea el mismo que usaste para login
+      'email': email,
       'rol': rol,
-      'grupo': grupo,
-      // plantel lo puedes mandar aparte si luego lo quieres usar en el script:
-      'plantel': plantel,
+      'grupo': (grupo ?? '').trim(),
+      'plantel': (plantel ?? '').trim(),
       'fcmToken': fcmToken,
       'dispositivo': tipoDispositivo,
     });
 
     try {
-      debugPrint(
-          'register_token payload -> rol: $rol, userId: $idUsuario, token: $fcmToken, payload: $payload');
-      final response = await http.post(
-        uri,
-        headers: const {'Content-Type': 'application/json'},
-        body: payload,
-      );
+      debugPrint('register_token GET -> $uri');
 
-      debugPrint(
-          'register_token status: ${response.statusCode}, body: ${response.body}, rol: $rol, userId: $idUsuario, token: $fcmToken');
+      final response = await http.get(uri);
 
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        debugPrint('No se pudo registrar token FCM.');
+      debugPrint('register_token status: ${response.statusCode}, body: ${response.body}');
+
+      if (response.statusCode != 200) {
+        debugPrint('❌ No se pudo registrar token FCM. HTTP ${response.statusCode}');
+        return;
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map || decoded['ok'] != true) {
+        debugPrint('❌ Respuesta inválida register_token: $decoded');
       }
     } catch (e) {
       debugPrint('Error registrando token en backend: $e');
     }
   }
+
+  // ===============================================================================
 
   // Suscripción a topics de emergencia según rol
   static Future<void> configurarSuscripcionesPorRol({
@@ -482,7 +493,8 @@ class NotificationService {
 
   static String? _topicPorPlantel(String prefijo, String? plantel) {
     if (plantel == null || plantel.trim().isEmpty) return null;
-    final normalizado = plantel.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '_');
+    final normalizado =
+    plantel.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '_');
     return '${prefijo}_$normalizado';
   }
 

@@ -12,9 +12,10 @@ import 'Servicios/notificaciones.dart';
 import 'Servicios/emergencia_service.dart';
 import 'roles.dart';
 import 'Servicios/servicio_ubicacion.dart';
+import 'Servicios/sos_live_service.dart';
 
 const String kRolPermitidoEmergencia = kRolAlumnoEstandar;
-const Duration kBloqueoEmergencia = Duration(minutes: 1);
+const Duration kBloqueoEmergencia = Duration(minutes: 15);
 const int kHoraInicioEmergencia = 7;
 const int kHoraFinEmergencia = 24;
 
@@ -571,8 +572,8 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
   }
 
   String _detalleItem(SosItem item) {
-    final grupo = (item.grupo?.isNotEmpty ?? false) ? item.grupo : 'Sin grupo';
-    final rol = (item.rol?.isNotEmpty ?? false) ? item.rol : '—';
+    final grupo = (item.grupo.isNotEmpty) ? item.grupo : 'Sin grupo';
+    final rol = (item.rol.isNotEmpty) ? item.rol : '—';
     final lastUpdate = _formatDateTime(item.lastUpdate);
     final coords = (item.lat != null && item.lng != null)
         ? '\nUbicación aprox.: ${item.lat!.toStringAsFixed(4)}, ${item.lng!.toStringAsFixed(4)}'
@@ -704,16 +705,12 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
     if (!_esAlumno) return false;
 
     final dispositivo = defaultTargetPlatform.name;
-
     final loc = await LocationService.getLatLng();
-    debugPrint('📍 LocationService.getLatLng() => $loc');
-
     final lat = loc?.lat ?? 0.0;
     final lng = loc?.lng ?? 0.0;
+    final minutes = kBloqueoEmergencia.inMinutes;
 
-    debugPrint('📍 Enviando emergencia con lat=$lat lng=$lng');
-
-    return EmergenciaService.enviarEmergenciaAlBackend(
+    final res = await EmergenciaService.enviarEmergenciaAlBackend(
       idUsuario: widget.userId,
       nombreUsuario: widget.displayName,
       email: widget.email,
@@ -723,9 +720,24 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
       fechaHoraLocal: fecha,
       lat: lat,
       lng: lng,
+      minutes : minutes,
       ubicacion: null,
       dispositivo: dispositivo,
     );
+
+    if (!res.ok || res.sosId == null) return false;
+
+    await SosLiveService.I.start(
+      sosId: res.sosId!,
+      userId: widget.userId,
+      nombre: widget.displayName,
+      rol: widget.role,
+      grupo: widget.grupo,
+      plantel: widget.plantel,
+      minInterval: const Duration(seconds: 3),
+    );
+
+    return true;
   }
 
   bool _estaDentroHorario(DateTime ahora) {

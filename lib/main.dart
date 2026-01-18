@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
@@ -22,6 +24,23 @@ final _passCtrl = TextEditingController();
 final _pass2Ctrl = TextEditingController();
 bool _showPass = false;
 bool _showPass2 = false;
+
+Future<void> ensureAnonAuth() async {
+  final auth = FirebaseAuth.instance;
+
+  // Ya hay sesión
+  if (auth.currentUser != null) return;
+
+  try {
+    await auth.signInAnonymously();
+    debugPrint('✅ Anonymous auth OK: ${auth.currentUser?.uid}');
+  } on FirebaseAuthException catch (e) {
+    debugPrint('❌ Anonymous auth failed: ${e.code} ${e.message}');
+    // Importante: NO lanzar excepción para no dejar pantalla negra.
+  } catch (e) {
+    debugPrint('❌ Anonymous auth unknown error: $e');
+  }
+}
 
 class SplashGate extends StatelessWidget {
   const SplashGate({super.key});
@@ -58,6 +77,8 @@ Future<void> main() async {
   if (platform is GoogleMapsFlutterAndroid) {
     platform.useAndroidViewSurface = true; // Hybrid composition
   }
+
+  await ensureAnonAuth();
 
   runApp(MyApp(navigatorKey: rootNavigatorKey));
 }
