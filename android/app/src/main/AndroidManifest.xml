@@ -17,7 +17,7 @@
     </queries>
 
     <application
-        android:label="boton_de_emergencia"
+        android:label="Boton de emergencia"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 

@@ -169,7 +169,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final email    = _session['email'] ?? acc?.email ?? '—';
     final role     = _session['role'] ?? '—';
     final phone    = _session['phone'] ?? '—';
-    final provider = _session['provider'] ?? (acc != null ? 'google' : '—');
 
     return Scaffold(
       appBar: AppBar(
@@ -222,7 +221,6 @@ class _HomeScreenState extends State<HomeScreen> {
             email: email,
             role: role,
             phone: phone,
-            provider: provider,
           ),
           EmergenciaPage(
             userId: _session['userId'] ?? acc?.id ?? '',
@@ -310,14 +308,12 @@ class PerfilPage extends StatelessWidget {
     required this.email,
     required this.role,
     required this.phone,
-    required this.provider,
   });
 
   final String displayName;
   final String email;
   final String role;
   final String phone;
-  final String provider;
 
   @override
   Widget build(BuildContext context) {
@@ -329,7 +325,6 @@ class PerfilPage extends StatelessWidget {
           Card(child: ListTile(leading: const Icon(Icons.email),   title: const Text('Correo'),   subtitle: Text(email))),
           Card(child: ListTile(leading: const Icon(Icons.badge),   title: const Text('Rol'),      subtitle: Text(role))),
           Card(child: ListTile(leading: const Icon(Icons.phone),   title: const Text('Teléfono'), subtitle: Text(phone))),
-          Card(child: ListTile(leading: const Icon(Icons.vpn_key), title: const Text('Proveedor'),subtitle: Text(provider.toUpperCase()))),
         ],
       ),
     );

@@ -36,6 +36,9 @@ class NotificationService {
   static RemoteMessage? _initialMessage;
   static bool _initialMessageHandled = false;
 
+  // Evita re-inicializaciones (hot restart/hot reload)
+  static bool _initialized = false;
+
   static const AndroidNotificationChannel _emergencyChannel =
   AndroidNotificationChannel(
     'emergencias_channel',
@@ -52,11 +55,15 @@ class NotificationService {
   static String? _idUsuarioActual;
   static String? _rolActual;
   static String? _nombreUsuario;
-  static String? _grupoActual;
-  static String? _plantelActual;
   static String? _tipoDispositivo;
   static String? _emailActual;
+  static String? _grupoActual;
+  static String? _plantelActual;
 
+
+  // Evita duplicar registros de token (por hot restart o múltiples llamadas con mismos datos)
+  static String? _lastRegisterSignature;
+  static DateTime? _lastRegisterAt;
   static final Set<String> _topicsSuscritos = <String>{};
   static final StreamController<void> _feedRefreshController =
   StreamController<void>.broadcast();
@@ -67,6 +74,14 @@ class NotificationService {
 
   static Future<void> initialize({GlobalKey<NavigatorState>? navigatorKey}) async {
     _navigatorKey = navigatorKey;
+
+    // Evita duplicar listeners por hot restart / re-entradas
+    if (_initialized) {
+      debugPrint('NotificationService.initialize(): ya inicializado, se omite.');
+      return;
+    }
+    _initialized = true;
+
     try {
       if (Firebase.apps.isEmpty) {
         await Firebase.initializeApp(
@@ -80,6 +95,7 @@ class NotificationService {
       return;
     }
 
+    // Background handler (se registra una sola vez)
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -134,9 +150,11 @@ class NotificationService {
 
     _messaging.onTokenRefresh.listen((token) async {
       _tokenFcm = token;
-      debugPrint(
-          '🔥 onTokenRefresh → token: $token, rol: $_rolActual, user: $_idUsuarioActual');
-      await _enviarRegistroTokenSiDisponible();
+      debugPrint('🔥 onTokenRefresh → token: $token, rol: $_rolActual, user: $_idUsuarioActual');
+      await _enviarRegistroTokenSiDisponible(
+        grupo: _grupoActual,
+        plantel: _plantelActual,
+      );
     });
   }
 
@@ -148,13 +166,15 @@ class NotificationService {
     );
 
     await _flnp
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        .resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
   }
 
   static Future<void> _createAndroidChannel() async {
-    final androidPlugin =
-    _flnp.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    final androidPlugin = _flnp
+        .resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
     await androidPlugin?.createNotificationChannel(_emergencyChannel);
   }
 
@@ -337,20 +357,27 @@ class NotificationService {
     _idUsuarioActual = idUsuario.isEmpty ? null : idUsuario;
     _rolActual = rol;
     _nombreUsuario = nombre;
-    _grupoActual = grupo;
-    _plantelActual = plantel;
     _tipoDispositivo = tipoDispositivo;
     _emailActual = email;
+    _grupoActual = grupo;
+    _plantelActual = plantel;
 
     debugPrint(
         'Configurando notificaciones -> user: $idUsuario, rol: $rol, grupo: $grupo, plantel: $plantel, dispositivo: $tipoDispositivo');
 
-    await _enviarRegistroTokenSiDisponible();
+    await _enviarRegistroTokenSiDisponible(
+      grupo: grupo,
+      plantel: plantel,
+    );
     await configurarSuscripcionesPorRol(rol: rol, plantel: plantel);
     await maybeHandleInitialMessageAfterLogin();
   }
 
-  static Future<void> _enviarRegistroTokenSiDisponible() async {
+  // Ajuste: pasar grupo/plantel realmente (antes estaban null siempre)
+  static Future<void> _enviarRegistroTokenSiDisponible({
+    String? grupo,
+    String? plantel,
+  }) async {
     final token = _tokenFcm;
     final idUsuario = _idUsuarioActual;
     final rol = _rolActual;
@@ -368,67 +395,197 @@ class NotificationService {
       return;
     }
 
+    final sig = [
+      idUsuario,
+      rol,
+      token,
+      (grupo ?? ''),
+      (plantel ?? ''),
+      (tipoDispositivo),
+      (email ?? ''),
+    ].join('|');
+
+    final nowTime = DateTime.now();
+    if (_lastRegisterSignature == sig &&
+        _lastRegisterAt != null &&
+        nowTime.difference(_lastRegisterAt!).inSeconds < 30) {
+      debugPrint('register_token: mismo payload reciente, se omite para evitar duplicado.');
+      return;
+    }
+    _lastRegisterSignature = sig;
+    _lastRegisterAt = nowTime;
+
     debugPrint('Listo para registrar token. user: $idUsuario, rol: $rol, token: $token');
 
     await registerTokenEnBackend(
+      kAppsScriptUrl: kAppsScriptUrl,
       idUsuario: idUsuario,
       rol: rol,
       nombre: nombre,
       email: email ?? '',
-      grupo: _grupoActual,
-      plantel: _plantelActual,
-      fcmToken: token,
+      grupo: grupo,
+      plantel: plantel,
       tipoDispositivo: tipoDispositivo,
+      fcmToken: token,
     );
   }
 
-  // ===================== MODIFICADO: register_token con redirect 302 =====================
-  static Future<void> registerTokenEnBackend({
+  // ===================================================================================
+  // ✅ FIX PRINCIPAL: Apps Script responde 302 -> location (script.googleusercontent.com)
+  // y hay que seguirlo manteniendo POST para obtener JSON.
+  // ===================================================================================
+
+  static Future<Map<String, dynamic>?> registerTokenEnBackend({
+    required String kAppsScriptUrl,
     required String idUsuario,
-    required String rol,
     required String nombre,
     required String email,
+    required String rol,
     String? grupo,
     String? plantel,
-    required String fcmToken,
     required String tipoDispositivo,
+    required String fcmToken,
   }) async {
-    final base = Uri.parse(endpointRegisterToken);
-
-    final uri = base.replace(queryParameters: {
+    final payload = {
       'op': 'register_token',
       'userId': idUsuario,
       'nombre': nombre,
       'email': email,
       'rol': rol,
-      'grupo': (grupo ?? '').trim(),
-      'plantel': (plantel ?? '').trim(),
-      'fcmToken': fcmToken,
+      'grupo': grupo ?? '',
+      'plantel': plantel ?? '',
       'dispositivo': tipoDispositivo,
-    });
+      'fcmToken': fcmToken,
+    };
+
+    final uri = Uri.parse(kAppsScriptUrl);
 
     try {
-      debugPrint('register_token GET -> $uri');
+      final result = await _postAppsScriptWithRedirect(
+        uri: uri,
+        payload: payload,
+        tag: 'register_token',
+      );
 
-      final response = await http.get(uri);
-
-      debugPrint('register_token status: ${response.statusCode}, body: ${response.body}');
-
-      if (response.statusCode != 200) {
-        debugPrint('❌ No se pudo registrar token FCM. HTTP ${response.statusCode}');
-        return;
+      if (kDebugMode) {
+        debugPrint('✅ register_token OK: $result');
       }
-
-      final decoded = jsonDecode(response.body);
-      if (decoded is! Map || decoded['ok'] != true) {
-        debugPrint('❌ Respuesta inválida register_token: $decoded');
-      }
+      return result;
     } catch (e) {
-      debugPrint('Error registrando token en backend: $e');
+      debugPrint('❌ register_token error: $e');
+      // NO truena la app, solo registra el error
+      return null;
     }
   }
 
-  // ===============================================================================
+  static Future<Map<String, dynamic>> _postAppsScriptWithRedirect({
+    required Uri uri,
+    required Map<String, dynamic> payload,
+    required String tag,
+  }) async {
+    // 1) Primer POST (no seguir redirects automáticamente)
+    final req1 = http.Request('POST', uri)
+      ..followRedirects = false
+      ..headers['Content-Type'] = 'application/json; charset=utf-8'
+      ..headers['Accept'] = 'application/json'
+      ..body = jsonEncode(payload);
+
+    final res1 = await req1.send();
+    final body1 = await res1.stream.bytesToString();
+
+    if (kDebugMode) {
+      debugPrint('$tag status: ${res1.statusCode}');
+      debugPrint('$tag headers: ${res1.headers}');
+      debugPrint('$tag body (first 200): ${_short(body1, 200)}');
+    }
+
+    // 2) 200-299 OK -> JSON directo
+    if (res1.statusCode >= 200 && res1.statusCode < 300) {
+      return _parseJsonOrThrow(body1, res1.statusCode, tag);
+    }
+
+    // 3) Redirect -> Apps Script manda Location a script.googleusercontent.com
+    if (res1.statusCode == 301 ||
+        res1.statusCode == 302 ||
+        res1.statusCode == 303 ||
+        res1.statusCode == 307 ||
+        res1.statusCode == 308) {
+      final loc = res1.headers['location'];
+      if (loc == null || loc.isEmpty) {
+        throw Exception('$tag redirect sin header location. status=${res1.statusCode}');
+      }
+
+      if (kDebugMode) debugPrint('➡️ $tag redirect to: $loc');
+
+      final locUri = Uri.parse(loc);
+
+      // Conserva query del redirect (user_content_key, lib, etc.)
+      final qp = <String, String>{}..addAll(locUri.queryParameters);
+
+      String put(String k, dynamic v) {
+        final s = (v ?? '').toString().trim();
+        if (s.isNotEmpty) qp[k] = s;
+        return s;
+      }
+
+      // Requeridos
+      put('op', payload['op']);
+      put('userId', payload['userId']);
+      put('fcmToken', payload['fcmToken']);
+
+      // Opcionales
+      put('nombre', payload['nombre']);
+      put('email', payload['email']);
+      put('rol', payload['rol']);
+      put('grupo', payload['grupo']);
+      put('plantel', payload['plantel']);
+      put('dispositivo', payload['dispositivo']);
+
+      final getUri = locUri.replace(queryParameters: qp);
+
+      if (kDebugMode) debugPrint('➡️ $tag GET redirect URL: $getUri');
+
+      final res2 = await http.get(
+        getUri,
+        headers: const {'Accept': 'application/json'},
+      );
+
+      final body2 = res2.body;
+
+      if (kDebugMode) {
+        debugPrint('$tag final status: ${res2.statusCode}');
+        debugPrint('$tag final headers: ${res2.headers}');
+        debugPrint('$tag final body (first 400): ${_short(body2, 400)}');
+      }
+
+      if (res2.statusCode >= 200 && res2.statusCode < 300) {
+        return _parseJsonOrThrow(body2, res2.statusCode, tag);
+      }
+
+      throw Exception('$tag falló tras redirect. status=${res2.statusCode}, body=${_short(body2, 400)}');
+    }
+
+    // 4) Cualquier otro status (4xx/5xx)
+    throw Exception('$tag falló. status=${res1.statusCode}, body=${_short(body1, 400)}');
+  }
+
+  static Map<String, dynamic> _parseJsonOrThrow(
+      String body, int status, String tag) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) return decoded;
+      throw Exception('$tag respuesta no es un JSON object. decoded=$decoded');
+    } catch (e) {
+      throw Exception('$tag respuesta no es JSON válido. status=$status body=${_short(body, 400)} err=$e');
+    }
+  }
+
+  static String _short(String s, int max) {
+    if (s.length <= max) return s;
+    return '${s.substring(0, max)}...';
+  }
+
+  // ===================================================================================
 
   // Suscripción a topics de emergencia según rol
   static Future<void> configurarSuscripcionesPorRol({
@@ -483,8 +640,6 @@ class NotificationService {
     _idUsuarioActual = null;
     _rolActual = null;
     _nombreUsuario = null;
-    _grupoActual = null;
-    _plantelActual = null;
     _tipoDispositivo = null;
     _emailActual = null;
     _initialMessage = null;

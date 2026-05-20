@@ -149,7 +149,12 @@ class _SplashScreenState extends State<SplashScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.shield, size: 96, color: Colors.white),
+              Image.asset(
+                'assets/images/Tuzita_sin_fondo.png',
+                width: 400,
+                height: 400,
+                fit: BoxFit.cover,
+              ),
               const SizedBox(height: 24),
               Text(
                 'Botón de Emergencia',
@@ -230,35 +235,36 @@ class _SignInScreenState extends State<SignInScreen> {
     final child = Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const Icon(Icons.shield, size: 72),
+        Image.asset(
+          'assets/images/Tuzita_sin_fondo.png',
+          width: 300,
+          height: 300,
+          fit: BoxFit.cover,
+        ),
         const SizedBox(height: 16),
         const Text(
-          'Botón de Emergencia\nPreparatoria',
+          'Botón de Emergencia\nEMSAD #26\nIgnacio Zaragoza',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 8),
         const Text(
-          'Inicia sesión para registrarte y proteger a la comunidad.',
+          'Seguridad para los alumnos',
           textAlign: TextAlign.center,
         ),
         FilledButton.icon(
           icon: const Icon(Icons.vpn_key),
-          label: const Text('Iniciar sesión con correo'),
+          label: const Text('Iniciar sesión'),
           onPressed: () {
             Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const LoginPage()),
             );
           },
         ),
-        const SizedBox(height: 28),
-        SizedBox(
-          width: 260,
-          child: FilledButton.icon(
-            icon: const Icon(Icons.login),
-            label: const Text('Continuar con Google'),
+        FilledButton.icon(
+          icon: const Icon(Icons.mail),
+          label: const Text('Registrase con Google'),
             onPressed: _loading ? null : _handleSignIn,
-          ),
         ),
         FilledButton.icon(
           icon: const Icon(Icons.mail),

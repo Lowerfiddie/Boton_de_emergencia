@@ -46,31 +46,26 @@ class EmergenciaService {
     double? lng,
     int minutes = 10, // <-- YA EXISTE minutes
   }) async {
-    final uri = Uri.parse(endpointEmergencia);
-
-    final payload = jsonEncode({
+    final uri = Uri.parse(endpointEmergencia).replace(queryParameters: {
       'op': 'sos_start',
       'userId': idUsuario,
       'nombre': nombreUsuario,
       'email': email,
       'rol': rol,
-      'grupo': grupo,
-      'lat': lat ?? 0.0,
-      'lng': lng ?? 0.0,
-      'minutes': minutes,
-      'plantel': plantel,
-      'fechaHoraLocal': fechaHoraLocal.toIso8601String(),
-      'ubicacion': ubicacion,
+      'grupo': grupo ?? '',
+      'plantel': plantel ?? '',
+      'lat': (lat ?? 0.0).toString(),
+      'lng': (lng ?? 0.0).toString(),
+      'minutes': minutes.toString(),
+      'ubicacion': ubicacion ?? '',
       'dispositivo': dispositivo,
     });
 
-    debugPrint('sos_start payload: $payload');
+    final response = await http.get(uri);
 
-    final response = await _postAppsScript(
-      uri,
-      headers: const {'Content-Type': 'application/json'},
-      body: payload,
-    );
+    debugPrint('sos_start status: ${response.statusCode}');
+    debugPrint('sos_start headers: ${response.headers}');
+    debugPrint('sos_start body(first 400): ${response.body.substring(0, response.body.length > 400 ? 400 : response.body.length)}');
 
     if (response.statusCode < 200 || response.statusCode >= 400) {
       return SosStartResponse(
@@ -150,42 +145,6 @@ class EmergenciaService {
     } finally {
       client.close();
     }
-  }
-
-  /// Maneja redirects típicos de Apps Script (302/303/307/308)
-  static Future<http.Response> _postAppsScript(
-      Uri url, {
-        required Map<String, String> headers,
-        required String body,
-      }) async {
-    final req = http.Request('POST', url)
-      ..headers.addAll(headers)
-      ..body = body
-      ..followRedirects = false
-      ..persistentConnection = false;
-
-    final first = await http.Response.fromStream(await req.send());
-
-    final status = first.statusCode;
-    if (status >= 300 && status < 400) {
-      final loc = first.headers['location'];
-      if (loc == null) return first;
-
-      final hdrs = {...headers};
-      final setCookie = first.headers['set-cookie'];
-      if (setCookie != null && setCookie.isNotEmpty) {
-        hdrs['cookie'] = setCookie;
-      }
-
-      final uri = Uri.parse(loc);
-      if (status == 307 || status == 308) {
-        return await http.post(uri, headers: hdrs, body: body);
-      } else {
-        return await http.get(uri, headers: hdrs);
-      }
-    }
-
-    return first;
   }
 }
 
