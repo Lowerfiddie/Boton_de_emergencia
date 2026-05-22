@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
@@ -14,12 +16,32 @@ import 'login_page.dart';
 import 'Servicios/notificaciones.dart';
 import 'firebase_options.dart';
 
+import 'package:google_maps_flutter_android/google_maps_flutter_android.dart';
+import 'package:google_maps_flutter_platform_interface/google_maps_flutter_platform_interface.dart';
+
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 final _passCtrl = TextEditingController();
 final _pass2Ctrl = TextEditingController();
 bool _showPass = false;
 bool _showPass2 = false;
+
+Future<void> ensureAnonAuth() async {
+  final auth = FirebaseAuth.instance;
+
+  // Ya hay sesión
+  if (auth.currentUser != null) return;
+
+  try {
+    await auth.signInAnonymously();
+    debugPrint('✅ Anonymous auth OK: ${auth.currentUser?.uid}');
+  } on FirebaseAuthException catch (e) {
+    debugPrint('❌ Anonymous auth failed: ${e.code} ${e.message}');
+    // Importante: NO lanzar excepción para no dejar pantalla negra.
+  } catch (e) {
+    debugPrint('❌ Anonymous auth unknown error: $e');
+  }
+}
 
 class SplashGate extends StatelessWidget {
   const SplashGate({super.key});
@@ -51,6 +73,13 @@ Future<void> main() async {
   } catch (e) {
     debugPrint('No se pudo inicializar NotificationService: $e');
   }
+
+  final platform = GoogleMapsFlutterPlatform.instance;
+  if (platform is GoogleMapsFlutterAndroid) {
+    platform.useAndroidViewSurface = true; // Hybrid composition
+  }
+
+  await ensureAnonAuth();
 
   runApp(MyApp(navigatorKey: rootNavigatorKey));
 }
@@ -127,7 +156,12 @@ class _SplashScreenState extends State<SplashScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.shield, size: 96, color: Colors.white),
+              Image.asset(
+                'assets/images/Tuzita_sin_fondo.png',
+                width: 400,
+                height: 400,
+                fit: BoxFit.cover,
+              ),
               const SizedBox(height: 24),
               Text(
                 'Botón de Emergencia',
@@ -169,6 +203,64 @@ class GoogleAuthClient extends http.BaseClient {
   }
 }
 
+String _shortBody(String body, [int max = 500]) {
+  if (body.length <= max) return body;
+  return '${body.substring(0, max)}...';
+}
+
+Future<http.Response> postAppsScriptJson({
+  required Uri uri,
+  required Map<String, dynamic> payload,
+  required String tag,
+}) async {
+  final encodedBody = jsonEncode(payload);
+  final headers = <String, String>{
+    'Content-Type': 'application/json; charset=utf-8',
+    'Accept': 'application/json',
+  };
+
+  final request = http.Request('POST', uri)
+    ..headers.addAll(headers)
+    ..body = encodedBody
+    ..followRedirects = false
+    ..persistentConnection = false;
+
+  final first = await http.Response.fromStream(await request.send());
+  debugPrint('$tag STATUS=${first.statusCode}');
+  debugPrint('$tag HEADERS=${first.headers}');
+  debugPrint('$tag BODY=${_shortBody(first.body)}');
+
+  final status = first.statusCode;
+  if (status >= 300 && status < 400) {
+    final location = first.headers['location'];
+    if (location == null || location.isEmpty) return first;
+
+    final redirectedUri = Uri.parse(location);
+    debugPrint('$tag REDIRECT TO=$redirectedUri');
+
+    late final http.Response second;
+    if (status == 307 || status == 308) {
+      second = await http.post(
+        redirectedUri,
+        headers: headers,
+        body: encodedBody,
+      );
+    } else {
+      second = await http.get(
+        redirectedUri,
+        headers: const {'Accept': 'application/json'},
+      );
+    }
+
+    debugPrint('$tag REDIRECT STATUS=${second.statusCode}');
+    debugPrint('$tag REDIRECT HEADERS=${second.headers}');
+    debugPrint('$tag REDIRECT BODY=${_shortBody(second.body)}');
+    return second;
+  }
+
+  return first;
+}
+
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
   @override
@@ -208,35 +300,36 @@ class _SignInScreenState extends State<SignInScreen> {
     final child = Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const Icon(Icons.shield, size: 72),
+        Image.asset(
+          'assets/images/Tuzita_sin_fondo.png',
+          width: 300,
+          height: 300,
+          fit: BoxFit.cover,
+        ),
         const SizedBox(height: 16),
         const Text(
-          'Botón de Emergencia\nPreparatoria',
+          'Botón de Emergencia\nEMSAD #26\nIgnacio Zaragoza',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 8),
         const Text(
-          'Inicia sesión para registrarte y proteger a la comunidad.',
+          'Seguridad para los alumnos',
           textAlign: TextAlign.center,
         ),
         FilledButton.icon(
           icon: const Icon(Icons.vpn_key),
-          label: const Text('Iniciar sesión con correo'),
+          label: const Text('Iniciar sesión'),
           onPressed: () {
             Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const LoginPage()),
             );
           },
         ),
-        const SizedBox(height: 28),
-        SizedBox(
-          width: 260,
-          child: FilledButton.icon(
-            icon: const Icon(Icons.login),
-            label: const Text('Continuar con Google'),
+        FilledButton.icon(
+          icon: const Icon(Icons.mail),
+          label: const Text('Registrase con Google'),
             onPressed: _loading ? null : _handleSignIn,
-          ),
         ),
         FilledButton.icon(
           icon: const Icon(Icons.mail),
@@ -314,20 +407,36 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       assert(kAppsScriptUrl.startsWith('https://script.google.com/macros/s/') && kAppsScriptUrl.endsWith('/exec'));
       debugPrint('POST to $kAppsScriptUrl');
 
-      final res = await http.post(
-        Uri.parse(kAppsScriptUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
+      final res = await postAppsScriptJson(
+        uri: Uri.parse(kAppsScriptUrl),
+        payload: body,
+        tag: 'REGISTER',
       );
 
-      bool ok = false; int updated = 0; String? err; Map<String, dynamic>? j;
-      (res.headers['content-type'] ?? '').toLowerCase();
+      bool ok = false;
+      int updated = 0;
+      String? err;
+      Map<String, dynamic>? j;
+
       if (res.statusCode >= 200 && res.statusCode < 300) {
         try {
-          j = jsonDecode(res.body) as Map<String, dynamic>;
-          ok = j['ok'] == true;
-          err = j['error'] as String?;
-        } catch (_) {}
+          final decoded = jsonDecode(res.body);
+          if (decoded is Map<String, dynamic>) {
+            j = decoded;
+            ok = j['ok'] == true;
+            err = j['error']?.toString();
+            updated = int.tryParse('${j['updated'] ?? j['updatedRows'] ?? 0}') ?? 0;
+          } else {
+            err = 'server_response_not_map';
+            debugPrint('REGISTER decoded no es Map: $decoded');
+          }
+        } catch (e) {
+          err = 'json_parse_error';
+          debugPrint('REGISTER JSON parse error: $e');
+          debugPrint('REGISTER RAW BODY: ${res.body}');
+        }
+      } else {
+        err = 'http_${res.statusCode}';
       }
 
       if (ok) {
@@ -345,6 +454,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         messenger.showSnackBar(
           SnackBar(content: Text(updated > 0 ? 'Registro actualizado' : 'Registro creado')),
         );
+        return;
       }
 
       if (err == 'already_exists') {
@@ -356,9 +466,13 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const LoginPage()),
         );
-      } else {
-        setState(() => _feedback = 'Error al registrar');
+        return;
       }
+
+      if (!mounted) return;
+      setState(() {
+        _feedback = 'Error al registrar: ${err ?? 'respuesta inválida del servidor'}';
+      });
     } catch (e) {
       if (mounted) setState(() => _feedback = 'Error: $e');
     } finally {

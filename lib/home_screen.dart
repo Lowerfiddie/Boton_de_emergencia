@@ -7,15 +7,18 @@ import 'session_manager.dart';
 import 'auth.dart'; // para googleSignIn
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'emergencia_page.dart';
 import 'Servicios/notificaciones.dart';
 import 'Servicios/emergencia_service.dart';
 import 'emergency_map_screen.dart';
 import 'roles.dart';
+import 'Servicios/servicio_ubicacion.dart';
+import 'Servicios/sos_live_service.dart';
 
 const String kRolPermitidoEmergencia = kRolAlumnoEstandar;
-const Duration kBloqueoEmergencia = Duration(minutes: 1);
-const int kHoraInicioEmergencia = 17;
-const int kHoraFinEmergencia = 2;
+const Duration kBloqueoEmergencia = Duration(minutes: 15);
+const int kHoraInicioEmergencia = 8;
+const int kHoraFinEmergencia = 15;
 
 enum HomeSection { perfil, emergencia, contactos }
 
@@ -167,7 +170,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final email    = _session['email'] ?? acc?.email ?? '—';
     final role     = _session['role'] ?? '—';
     final phone    = _session['phone'] ?? '—';
-    final provider = _session['provider'] ?? (acc != null ? 'google' : '—');
 
     return Scaffold(
       appBar: AppBar(
@@ -220,7 +222,6 @@ class _HomeScreenState extends State<HomeScreen> {
             email: email,
             role: role,
             phone: phone,
-            provider: provider,
           ),
           EmergenciaPage(
             userId: _session['userId'] ?? acc?.id ?? '',
@@ -308,14 +309,12 @@ class PerfilPage extends StatelessWidget {
     required this.email,
     required this.role,
     required this.phone,
-    required this.provider,
   });
 
   final String displayName;
   final String email;
   final String role;
   final String phone;
-  final String provider;
 
   @override
   Widget build(BuildContext context) {
@@ -327,7 +326,6 @@ class PerfilPage extends StatelessWidget {
           Card(child: ListTile(leading: const Icon(Icons.email),   title: const Text('Correo'),   subtitle: Text(email))),
           Card(child: ListTile(leading: const Icon(Icons.badge),   title: const Text('Rol'),      subtitle: Text(role))),
           Card(child: ListTile(leading: const Icon(Icons.phone),   title: const Text('Teléfono'), subtitle: Text(phone))),
-          Card(child: ListTile(leading: const Icon(Icons.vpn_key), title: const Text('Proveedor'),subtitle: Text(provider.toUpperCase()))),
         ],
       ),
     );
@@ -477,26 +475,41 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
                     );
                   }
 
-                      return ListView.separated(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        itemCount: items.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
-                        itemBuilder: (context, index) {
-                          final item = items[index];
-                          return Card(
-                            child: ListTile(
-                              leading: const CircleAvatar(
-                                backgroundColor: Colors.redAccent,
-                                child: Icon(Icons.warning, color: Colors.white),
+                  return ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    itemCount: items.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final item = items[index];
+
+                      return Card(
+                        child: ListTile(
+                          leading: const CircleAvatar(
+                            backgroundColor: Colors.redAccent,
+                            child: Icon(Icons.warning, color: Colors.white),
+                          ),
+                          title: Text(item.nombre),
+                          subtitle: Text(_detalleItem(item)),
+                          trailing: _buildEstadoChip(item), // ahora ya no saldrá "Expirada"
+
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => DetalleEmergenciaPage(emergencia: item),
                               ),
-                              title: Text(item.nombre),
-                              subtitle: Text(_detalleItem(item)),
-                              trailing: _buildEstadoChip(item), // ahora ya no saldrá "Expirada"
-                              onTap: () => _abrirMapaSiDisponible(item),
-                            ),
-                          );
-                        },
+                            );
+                          },
+
+                          // si también quieres presionado largo:
+                          // onLongPress: () {
+                          //   debugPrint('Long press: ${item.nombre}');
+                          // },
+                        ),
                       );
+                    },
+                  );
+
                 },
               ),
             ),
@@ -555,8 +568,8 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
   }
 
   String _detalleItem(SosItem item) {
-    final grupo = (item.grupo?.isNotEmpty ?? false) ? item.grupo : 'Sin grupo';
-    final rol = (item.rol?.isNotEmpty ?? false) ? item.rol : '—';
+    final grupo = (item.grupo.isNotEmpty) ? item.grupo : 'Sin grupo';
+    final rol = (item.rol.isNotEmpty) ? item.rol : '—';
     final lastUpdate = _formatDateTime(item.lastUpdate);
     final coords = (item.lat != null && item.lng != null)
         ? '\nUbicación aprox.: ${item.lat!.toStringAsFixed(4)}, ${item.lng!.toStringAsFixed(4)}'
@@ -704,21 +717,42 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
   }
 
   Future<bool> _enviarEmergencia(DateTime fecha) async {
-    // ✅ Blindaje extra: el backend solo debe recibir eventos creados por ALUMNO.
     if (!_esAlumno) return false;
 
     final dispositivo = defaultTargetPlatform.name;
-    return EmergenciaService.enviarEmergenciaAlBackend(
+    final loc = await LocationService.getLatLng();
+    final lat = loc?.lat ?? 0.0;
+    final lng = loc?.lng ?? 0.0;
+    final minutes = kBloqueoEmergencia.inMinutes;
+
+    final res = await EmergenciaService.enviarEmergenciaAlBackend(
       idUsuario: widget.userId,
       nombreUsuario: widget.displayName,
       email: widget.email,
-      rol: widget.role, // seguirá siendo "alumno"
+      rol: widget.role,
       grupo: widget.grupo,
       plantel: widget.plantel,
       fechaHoraLocal: fecha,
+      lat: lat,
+      lng: lng,
+      minutes : minutes,
       ubicacion: null,
       dispositivo: dispositivo,
     );
+
+    if (!res.ok || res.sosId == null) return false;
+
+    await SosLiveService.I.start(
+      sosId: res.sosId!,
+      userId: widget.userId,
+      nombre: widget.displayName,
+      rol: widget.role,
+      grupo: widget.grupo,
+      plantel: widget.plantel,
+      minInterval: const Duration(seconds: 3),
+    );
+
+    return true;
   }
 
   bool _estaDentroHorario(DateTime ahora) {
