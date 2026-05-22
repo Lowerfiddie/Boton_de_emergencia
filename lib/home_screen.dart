@@ -16,8 +16,8 @@ import 'Servicios/sos_live_service.dart';
 
 const String kRolPermitidoEmergencia = kRolAlumnoEstandar;
 const Duration kBloqueoEmergencia = Duration(minutes: 15);
-const int kHoraInicioEmergencia = 7;
-const int kHoraFinEmergencia = 24;
+const int kHoraInicioEmergencia = 8;
+const int kHoraFinEmergencia = 15;
 
 enum HomeSection { perfil, emergencia, contactos }
 
