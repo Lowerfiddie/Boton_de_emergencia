@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'emergencia_page.dart';
 import 'Servicios/notificaciones.dart';
 import 'Servicios/emergencia_service.dart';
+import 'emergency_map_screen.dart';
 import 'roles.dart';
 import 'Servicios/servicio_ubicacion.dart';
 import 'Servicios/sos_live_service.dart';
@@ -586,6 +587,25 @@ class _EmergenciaPageState extends State<EmergenciaPage> {
 
   List<SosItem> _soloActivas(List<SosItem> items) {
     return items.where(_esActiva).toList();
+  }
+
+  void _abrirMapaSiDisponible(SosItem item) {
+    if (item.lat == null ||
+        item.lng == null ||
+        (item.lat == 0.0 && item.lng == 0.0)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Esta emergencia no tiene ubicación.')),
+      );
+      return;
+    }
+    Navigator.of(context).pushNamed(
+      '/emergency-map',
+      arguments: EmergencyMapArgs(
+        item: item,
+        viewerRole: widget.role,
+        viewerId: widget.userId,
+      ),
+    );
   }
 
 
